@@ -187,6 +187,12 @@ def bsub(trace):
     return bsub_trace
 
 def response_filter(response, freq_range=None, holding_range=None, pulse=False, train=None, delta_t=None):
+
+    #plot = pg.plot()
+    '''unique to this code, filters based key words 
+    START HERE AND EXPAND
+    '''
+
     new_responses = []
     holding_pass = []
     for stim_params, trials in response.items():
@@ -246,6 +252,9 @@ def trace_plot(trace, color, plot=None, x_range=None, name=None):
     return plot
 
 def train_amp(trace, pulse_offset, sign):
+    '''PROBABLY ALREADY IN DATABASE
+    WANT ABILITY TO DO ANALYSIS ON FULL TRAIN--ONLY FIRST PULSE NOW
+    '''
     deconv_trace = deconv_train(trace[:2])
     pulses = np.array(pulse_offset)[0]
     ind_pulses = pulses[:8] + 13e-3
@@ -332,6 +341,11 @@ def recovery_summary(train_response, rec_t, holding, thresh=5, rec_dict=None, of
     return rec_dict, offset_dict
 
 def pulse_qc(responses, baseline=None, pulse=None, plot=None):
+
+    '''LOOK AT THIS
+    GETTING RID OF DRIFTS IN BASELINE
+    '''
+
     """
     Parameters
     ----------
@@ -349,6 +363,7 @@ def pulse_qc(responses, baseline=None, pulse=None, plot=None):
     ----------
     qc_pass : 
     """
+
     qc_pass = []
     avg, amp, _, peak_t = get_amplitude(responses)
     pulse_win = int((peak_t + 1e-3)/avg.dt)
@@ -377,6 +392,7 @@ def pulse_qc(responses, baseline=None, pulse=None, plot=None):
     return qc_pass
 
 def train_qc(responses, offset, amp=None, sign=None, plot=None):
+    '''LARGEST TRAIN RESPONSES'''
     qc_pass = [[],[], []]
     amps = train_amp(responses[:2], offset, sign=sign)
     for n in range(amps.shape[0]):

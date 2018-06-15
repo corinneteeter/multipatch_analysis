@@ -117,6 +117,7 @@ for c in range(len(connection_types)):
                     qc_list = pulse_qc(response_subset, baseline=1.5, pulse=None, plot=qc_plot)
                     if len(qc_list) >= sweep_threshold:
                         avg_trace, avg_amp, amp_sign, peak_t = get_amplitude(qc_list)
+                        #TODO: Corinne look in here
                         if amp_sign is '-':
                             continue
                         #print ('%s, %0.0f' %((expt.uid, pre, post), hold, ))
@@ -264,7 +265,7 @@ decay_list = feature_anova('decay', grand_response)
 #     print ('KS: CV = %f' % p)
 features = (amp_list, latency_list, rise_list, decay_list)
 
-#write_cache(expt_ids, 'pulse_expt_ids.pkl')
+write_cache(expt_ids, 'pulse_expt_ids_human.pkl')
 #write_cache(features, 'pulse_features_human.pkl')
 
 df = pd.DataFrame(data=manifest)
