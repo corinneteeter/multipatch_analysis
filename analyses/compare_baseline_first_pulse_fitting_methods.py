@@ -1,4 +1,5 @@
-'''This code is meant to explore fitting single PSPs'''
+'''See if fitting average psp yields the same results as fitting baseline subtracted and then averaged psps 
+'''
 
 from __future__ import print_function, division
 from multipatch_analysis.experiment_list import cached_experiments
@@ -7,7 +8,8 @@ from multipatch_analysis.synaptic_dynamics import DynamicsAnalyzer
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-import neuroanalysis.baseline.float_mode as float_mode
+from neuroanalysis.baseline import float_mode
+from neuroanalysis.data import TraceList
 
 desired_organism = 'human'
 
@@ -50,9 +52,14 @@ for connection in selected_expt_list.connection_summary():
         pre_pad = 10e-3, 
         post_pad = 50e-3
         
-        # loop though sweeps in recording
-        no_skipping_sweep_count=0 #hack to avoid plotting when no sweeps in the experiment are recorded
+        # initialize trace_view lists (want trace view lists so can use averaging methods which take care of sampling issues etc.)
+        floatp_bl_sub_v_waveform_trace_list=TraceList()
+        mean_bl_sub_v_waveform_trace_list=TraceList()
+        non_altered_v_waveform_trace_list=TraceList()
         plt.figure()
+        no_skipping_sweep_count=0 #hack to avoid plotting when no sweeps in the experiment are recorded
+        
+        # loop though sweeps in recording
         for srec in expt.data.contents:
             sweep_id=srec._sweep_id
             print ('sweep_id', sweep_id)
@@ -79,60 +86,62 @@ for connection in selected_expt_list.connection_summary():
                 for pulse in spike_data:
                     if pulse['pulse_n'] == 1:
                         first_pulse_dict = pulse
-                        
+            
             # only use pulses that pass qc for excitatory.
             if first_pulse_dict['ex_qc_pass'] != True:
                 print("Skipping %s electrode ids %d, %d; doesnt pass excitatory qc" % (expt.uid, pre_electrode_id, post_electrode_id))                
-                continue                        
+                continue
             
-            # For single pulse fitting there are several options:
-            #    1.  let psp fit baseline
-            #    2.  force it to calculated baseline  
-            sweep_baseline=float_mode(first_pulse_dict['baseline'].data)
+            # get baseline via float mode method
+            sweep_baseline_float_mode=float_mode(first_pulse_dict['baseline'].data)
+            sweep_baseline_mean=np.mean(first_pulse_dict['baseline'].data)
             
-            # plotting to see what the spikes look like
+            # create traces with altered data for different baseline conditions
+            response = first_pulse_dict['response'] #for ease of using trace copy
+            floatp_bl_sub_v_waveform_trace=response.copy(data=response.data-sweep_baseline_float_mode) #Trace object with baseline subtracted data via float mode method 
+            mean_bl_sub_v_waveform_trace=response.copy(data=response.data-sweep_baseline_mean) #Trace object with baseline subtracted data via mean
+            
+            # plot individual sweeps
             plt.subplot(3,1,1)
-            plt.plot(first_pulse_dict['command'].data)
-            plt.title('command')
+            plt.plot(floatp_bl_sub_v_waveform_trace.data)
+            plt.title('float_mode baseline subtraction')
             plt.subplot(3,1,2)
-            plt.plot(first_pulse_dict['pre_rec'].data)
-            plt.title('pre synaptic response')
+            plt.plot(mean_bl_sub_v_waveform_trace.data)
+            plt.title('average baseline subtraction')
             plt.subplot(3,1,3)
             plt.plot(first_pulse_dict['response'].data)
-            plt.title('post synaptic response')
-            
+            plt.title('non altered data')
+                       
             no_skipping_sweep_count=no_skipping_sweep_count+1 #records if a sweep made it though filters
+            # put traces in a TraceList so can use mean method
+            floatp_bl_sub_v_waveform_trace_list.append(floatp_bl_sub_v_waveform_trace)
+            mean_bl_sub_v_waveform_trace_list.append(mean_bl_sub_v_waveform_trace)
+            non_altered_v_waveform_trace_list.append(first_pulse_dict['response'])
             
-            # Will the average first_pusle_psp yield the same fits as the baseline subtracted psp
-        
-        # if there are sweeps recorded for a neuron, plot them
+        # if there are sweeps recorded for a neuron do more analysis
         if no_skipping_sweep_count>0:
+            plt.subplot(3,1,1)
+            plt.plot(mean_bl_sub_v_waveform_trace_list.mean().data, '--k', lw=10)
+            plt.title('float mode baseline subtracted average data')
+            plt.subplot(3,1,2)
+            plt.plot(mean_bl_sub_v_waveform_trace_list.mean().data, '--k', lw=10)
+            plt.title('mean baseline subtracted average data')
+            plt.subplot(3, 1, 3)
+            plt.plot(non_altered_v_waveform_trace_list.mean().data, '--k', lw=10)
+            plt.title('average data')
+            plt.tight_layout()
             plt.annotate('uid %s, pre/post electrodes %d, %d' % (expt.uid, pre_electrode_id, post_electrode_id),  
                          xy = (.5, .97), ha = 'center', fontsize = 16, xycoords = 'figure fraction')
             plt.show()
+            # start here
+    #        psp_fits = fit_psp(avg_trace, 
+    #                   xoffset=(14e-3, -float('inf'), float('inf')),
+    #                   sign=amp_sign, 
+    #                   weight=weight)   
         else:
             plt.close()
             
-            #---------------------------------------------------------------------------------
-
-            # ----Note that we may want to put a induction frequency filter here---
+       
             
-#            # get the first pulses: dont need this since get_spike_responses() returns necessary responses
-#            post_cell_trace_view, baseline_trace_view, pre_cell_trace_view, command_trace_view = analyzer.get_train_response(pre_rec,
-#                                                                                                                            post_rec, 
-#                                                                                                                            start_pulse=0, 
-#                                                                                                                            stop_pulse=0, 
-#                                                                                                                            padding=(-10e-3, 50e-3)) #notice that instead of skipping traces without a spike at first pulse you could set which pule to use here 
-#            
-#            # plot what is coming out of the get train responses.
-#            plt.figure()
-#            plot_trace_views([4,1], post_cell_trace_view, title = 'Post synaptic response?')
-#            plot_trace_views([4,4], baseline_trace_view, title = 'Baseline')
-#            plot_trace_views([4,2], pre_cell_trace_view, title = 'Pre synaptic resonse')
-#            plot_trace_views([4,3], command_trace_view, title = 'Current injection')
-#            plt.tight_layout()
-#            plt.annotate('uid %s, pre/post electrodes %d, %d, sweep %d' % (expt.uid, pre_electrode_id, post_electrode_id, sweep_id),  
-#                         xy = (.5, .97), ha = 'center', fontsize = 16, xycoords = 'figure fraction')
-#            plt.show()
-#            print ('hi')
+            
             
