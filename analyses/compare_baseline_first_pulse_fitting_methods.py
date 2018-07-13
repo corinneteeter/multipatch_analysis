@@ -121,14 +121,14 @@ for connection in selected_expt_list.connection_summary():
         # if there are sweeps recorded for a neuron do more analysis
         if no_skipping_sweep_count>0:
             plt.subplot(3,1,1)
-            plt.plot(mean_bl_sub_v_waveform_trace_list.mean().data, '--k', lw=10)
-            plt.title('float mode baseline subtracted average data')
+            plt.plot(mean_bl_sub_v_waveform_trace_list.mean().data, 'k', lw=10)
+            plt.title('float mode baseline subtracted')
             plt.subplot(3,1,2)
-            plt.plot(mean_bl_sub_v_waveform_trace_list.mean().data, '--k', lw=10)
-            plt.title('mean baseline subtracted average data')
+            plt.plot(mean_bl_sub_v_waveform_trace_list.mean().data, 'k', lw=10)
+            plt.title('mean baseline subtracted')
             plt.subplot(3, 1, 3)
-            plt.plot(non_altered_v_waveform_trace_list.mean().data, '--k', lw=10)
-            plt.title('average data')
+            plt.plot(non_altered_v_waveform_trace_list.mean().data, 'k', lw=10)
+            plt.title('data')
             plt.tight_layout()
             plt.annotate('uid %s, pre/post electrodes %d, %d' % (expt.uid, pre_electrode_id, post_electrode_id),  
                          xy = (.5, .97), ha = 'center', fontsize = 16, xycoords = 'figure fraction')

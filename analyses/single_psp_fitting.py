@@ -7,7 +7,10 @@ from multipatch_analysis.synaptic_dynamics import DynamicsAnalyzer
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-import neuroanalysis.baseline.float_mode as float_mode
+from neuroanalysis.baseline import float_mode
+from neuroanalysis.fitting import fit_psp
+from neuroanalysis.data import TraceList
+
 
 desired_organism = 'human'
 
@@ -50,9 +53,9 @@ for connection in selected_expt_list.connection_summary():
         pre_pad = 10e-3, 
         post_pad = 50e-3
         
-        # loop though sweeps in recording
+        # loop though sweeps in recording and pull out the ones you want
         no_skipping_sweep_count=0 #hack to avoid plotting when no sweeps in the experiment are recorded
-        plt.figure()
+        first_pulse_list=[]
         for srec in expt.data.contents:
             sweep_id=srec._sweep_id
             print ('sweep_id', sweep_id)
@@ -75,64 +78,75 @@ for connection in selected_expt_list.connection_summary():
                 print("Skipping %s electrode ids %d, %d; no spike on first pulse" % (expt.uid, pre_electrode_id, post_electrode_id))                
                 continue
 
-            else: # selects the first pulse data
+            else: # selects the first pulse data and excludes data that doesn't pass the excitatory qc
                 for pulse in spike_data:
-                    if pulse['pulse_n'] == 1:
-                        first_pulse_dict = pulse
-                        
-            # only use pulses that pass qc for excitatory.
-            if first_pulse_dict['ex_qc_pass'] != True:
-                print("Skipping %s electrode ids %d, %d; doesnt pass excitatory qc" % (expt.uid, pre_electrode_id, post_electrode_id))                
-                continue                        
-            
-            # For single pulse fitting there are several options:
-            #    1.  let psp fit baseline
-            #    2.  force it to calculated baseline  
-            sweep_baseline=float_mode(first_pulse_dict['baseline'].data)
-            
-            # plotting to see what the spikes look like
-            plt.subplot(3,1,1)
-            plt.plot(first_pulse_dict['command'].data)
-            plt.title('command')
-            plt.subplot(3,1,2)
-            plt.plot(first_pulse_dict['pre_rec'].data)
-            plt.title('pre synaptic response')
-            plt.subplot(3,1,3)
-            plt.plot(first_pulse_dict['response'].data)
-            plt.title('post synaptic response')
-            
-            no_skipping_sweep_count=no_skipping_sweep_count+1 #records if a sweep made it though filters
-            
-            # Will the average first_pusle_psp yield the same fits as the baseline subtracted psp
+                    if pulse['pulse_n'] == 1 and pulse['ex_qc_pass'] == True:
+                        first_pulse_list.append(pulse)
+                                            
+        if len(first_pulse_list)>0:    
         
-        # if there are sweeps recorded for a neuron, plot them
-        if no_skipping_sweep_count>0:
-            plt.annotate('uid %s, pre/post electrodes %d, %d' % (expt.uid, pre_electrode_id, post_electrode_id),  
-                         xy = (.5, .97), ha = 'center', fontsize = 16, xycoords = 'figure fraction')
-            plt.show()
-        else:
-            plt.close()
-            
-            #---------------------------------------------------------------------------------
+            # get average trace baseline subtracted average for average fit
+            bsub_trace_list=[]
+            for sweep in first_pulse_list:
+                sweep_trace=sweep['response']
+                sweep_baseline_float_mode=float_mode(sweep['baseline'].data)
+                bsub_trace_list.append(sweep_trace.copy(data=sweep_trace.data-sweep_baseline_float_mode)) #Trace object with baseline subtracted data via float mode method 
 
-            # ----Note that we may want to put a induction frequency filter here---
+            average=TraceList(bsub_trace_list).mean()
+            plt.figure()
+            plt.plot(average.data)
+            plt.show()
             
-#            # get the first pulses: dont need this since get_spike_responses() returns necessary responses
-#            post_cell_trace_view, baseline_trace_view, pre_cell_trace_view, command_trace_view = analyzer.get_train_response(pre_rec,
-#                                                                                                                            post_rec, 
-#                                                                                                                            start_pulse=0, 
-#                                                                                                                            stop_pulse=0, 
-#                                                                                                                            padding=(-10e-3, 50e-3)) #notice that instead of skipping traces without a spike at first pulse you could set which pule to use here 
+#             
+##            # plotting to see what the spikes look like
+##            plt.figure("aligned_spikes")
+##            plt.subplot(3,1,1)
+##            plt.plot(first_pulse_dict['command'].data)
+##            plt.title('command')
+##            plt.subplot(3,1,2)
+##            plt.plot(first_pulse_dict['pre_rec'].data)
+##            plt.title('pre synaptic response')
+##            plt.subplot(3,1,3)
+##            plt.plot(first_pulse_dict['response'].data)
+##            plt.title('post synaptic response')
+#
+#            # ----Note that we may want to put a induction frequency filter here---
 #            
-#            # plot what is coming out of the get train responses.
-#            plt.figure()
-#            plot_trace_views([4,1], post_cell_trace_view, title = 'Post synaptic response?')
-#            plot_trace_views([4,4], baseline_trace_view, title = 'Baseline')
-#            plot_trace_views([4,2], pre_cell_trace_view, title = 'Pre synaptic resonse')
-#            plot_trace_views([4,3], command_trace_view, title = 'Current injection')
+#            no_skipping_sweep_count=no_skipping_sweep_count+1 #records if a sweep made it though filters
+#            
+#        if no_skipping_sweep_count>0:
+#            response_voltage=first_pulse_dict['response'].data
+##            # weight parts of the trace during fitting
+#            dt = first_pulse_dict['response'].dt
+#            pulse_ind=first_pulse_dict['pulse_ind']-first_pulse_dict['rec_start'] #get pulse indicies 
+#            weight = np.ones(len(response_voltage))*10.  #set everything to ten initially
+#            weight[pulse_ind:pulse_ind+int(3e-3/dt)] = 0.   #area around stim artifact
+#            weight[pulse_ind+int(3e-3/dt):pulse_ind+int(15e-3/dt)] = 30.  #area around steep PSP rise 
+#            
+#            psp_fits = fit_psp(first_pulse_dict['response'], 
+#                               xoffset=(.525, -float('inf'), float('inf')),
+#                               sign='any', 
+#                               weight=weight) 
+#            
+#            time_values=first_pulse_dict['response'].time_values
+#            fig=plt.figure(figsize=(20,8))
+#            a1=fig.add_subplot(2,1,1)
+#            a1.plot(time_values, first_pulse_dict['pre_rec'].data)
+#            a2=a1.twinx()
+#            a2.plot(time_values, first_pulse_dict['command'].data)
+#            plt.title('uid %s, pre/post electrodes %d, %d' % (expt.uid, pre_electrode_id, post_electrode_id) + ', nrmse,' + str(psp_fits.nrmse()))
+#            
+#            ax=fig.add_subplot(2,1,2)
+#            ax2=ax.twinx()
+#            ax.plot(time_values, psp_fits.data*1.e3, 'b', label='data')
+#            ax.plot(time_values, psp_fits.best_fit*1.e3, 'g', lw=5, label='current best fit')
+#            ax2.plot(time_values, weight, 'r', label='weighting')
+#            ax.legend()
 #            plt.tight_layout()
-#            plt.annotate('uid %s, pre/post electrodes %d, %d, sweep %d' % (expt.uid, pre_electrode_id, post_electrode_id, sweep_id),  
-#                         xy = (.5, .97), ha = 'center', fontsize = 16, xycoords = 'figure fraction')
-#            plt.show()
-#            print ('hi')
+#            plt.show(block=False)
+#            
+#        plt.show()
+#
+#            #---------------------------------------------------------------------------------
+
             
