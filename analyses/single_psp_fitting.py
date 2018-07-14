@@ -50,12 +50,13 @@ for connection in selected_expt_list.connection_summary():
         post_electrode_id = post_cell_id - 1
 
         # how much padding to include when extracting events
-        pre_pad = 10e-3, 
+        pre_pad = 10e-3 
         post_pad = 50e-3
         
         # loop though sweeps in recording and pull out the ones you want
         no_skipping_sweep_count=0 #hack to avoid plotting when no sweeps in the experiment are recorded
         first_pulse_list=[]
+        command_trace_list=[]
         for srec in expt.data.contents:
             sweep_id=srec._sweep_id
             print ('sweep_id', sweep_id)
@@ -83,19 +84,46 @@ for connection in selected_expt_list.connection_summary():
                     if pulse['pulse_n'] == 1 and pulse['ex_qc_pass'] == True:
                         first_pulse_list.append(pulse)
                                             
+        # if there are sweeps do the analysis
         if len(first_pulse_list)>0:    
         
-            # get average trace baseline subtracted average for average fit
+            # ---get baseline subtracted average for average fit
             bsub_trace_list=[]
             for sweep in first_pulse_list:
                 sweep_trace=sweep['response']
                 sweep_baseline_float_mode=float_mode(sweep['baseline'].data)
-                bsub_trace_list.append(sweep_trace.copy(data=sweep_trace.data-sweep_baseline_float_mode)) #Trace object with baseline subtracted data via float mode method 
+                bsub_trace_list.append(sweep_trace.copy(data=sweep_trace.data-sweep_baseline_float_mode, t0=0)) #Trace object with baseline subtracted data via float mode method. Note t0 is realigned to 0 
+                command_trace_list.append(sweep['command'].copy(t0=0)) #get command traces so can see the average pulse for cross talk region estimation
+            
+            # take average of baseline subtracted data
+            avg_voltage=TraceList(bsub_trace_list).mean()
+            avg_dt=avg_voltage.dt
+            avg_command=TraceList(command_trace_list).mean()  # pulses are slightly different in reference spike
+            
+            #fit the average base_line subtracted data
+            weight = np.ones(len(avg_voltage.data))*10.  #set everything to ten initially
+            weight[int((pre_pad-3e-3)/avg_dt):int(pre_pad/avg_dt)] = 0.   #area around stim artifact note that since this is spike aligned there will be some blur in where the cross talk is
+            weight[int((pre_pad+1e-3)/avg_dt):int((pre_pad+5e-3)/avg_dt)] = 30.  #area around steep PSP rise 
+            ave_psp_fit = fit_psp(avg_voltage, 
+                               xoffset=(pre_pad+2e-3, pre_pad, pre_pad+5e-3), #since these are spike aligned the psp should not happen before the spike that happens at pre_pad by definition 
+                               sign='any', 
+                               weight=weight) 
+            
 
-            average=TraceList(bsub_trace_list).mean()
             plt.figure()
-            plt.plot(average.data)
+            c1=plt.subplot(2,1,1)
+            c1.plot(avg_command.time_values, avg_command.data)
+            c2=c1.twinx()
+            c2.plot(avg_voltage.time_values, weight, 'r')
+            plt.title('average command')
+            ax1=plt.subplot(2,1,2)
+            ax1.plot(avg_voltage.time_values, avg_voltage.data, label='data')
+            ax1.plot(avg_voltage.time_values, ave_psp_fit.best_fit, 'g', label='fit')
+            ax2=ax1.twinx()
+            ax2.plot(avg_voltage.time_values, weight, 'r', label='weight')
+            plt.title('mean baseline subtracted spike aligned')
             plt.show()
+#-----------------------------------------------------------------------
             
 #             
 ##            # plotting to see what the spikes look like
@@ -113,40 +141,49 @@ for connection in selected_expt_list.connection_summary():
 #            # ----Note that we may want to put a induction frequency filter here---
 #            
 #            no_skipping_sweep_count=no_skipping_sweep_count+1 #records if a sweep made it though filters
-#            
-#        if no_skipping_sweep_count>0:
-#            response_voltage=first_pulse_dict['response'].data
-##            # weight parts of the trace during fitting
-#            dt = first_pulse_dict['response'].dt
-#            pulse_ind=first_pulse_dict['pulse_ind']-first_pulse_dict['rec_start'] #get pulse indicies 
-#            weight = np.ones(len(response_voltage))*10.  #set everything to ten initially
-#            weight[pulse_ind:pulse_ind+int(3e-3/dt)] = 0.   #area around stim artifact
-#            weight[pulse_ind+int(3e-3/dt):pulse_ind+int(15e-3/dt)] = 30.  #area around steep PSP rise 
-#            
-#            psp_fits = fit_psp(first_pulse_dict['response'], 
-#                               xoffset=(.525, -float('inf'), float('inf')),
-#                               sign='any', 
-#                               weight=weight) 
-#            
-#            time_values=first_pulse_dict['response'].time_values
-#            fig=plt.figure(figsize=(20,8))
-#            a1=fig.add_subplot(2,1,1)
-#            a1.plot(time_values, first_pulse_dict['pre_rec'].data)
-#            a2=a1.twinx()
-#            a2.plot(time_values, first_pulse_dict['command'].data)
-#            plt.title('uid %s, pre/post electrodes %d, %d' % (expt.uid, pre_electrode_id, post_electrode_id) + ', nrmse,' + str(psp_fits.nrmse()))
-#            
-#            ax=fig.add_subplot(2,1,2)
-#            ax2=ax.twinx()
-#            ax.plot(time_values, psp_fits.data*1.e3, 'b', label='data')
-#            ax.plot(time_values, psp_fits.best_fit*1.e3, 'g', lw=5, label='current best fit')
-#            ax2.plot(time_values, weight, 'r', label='weighting')
-#            ax.legend()
-#            plt.tight_layout()
-#            plt.show(block=False)
-#            
-#        plt.show()
-#
+#           
+            for first_pulse_dict in first_pulse_list:
+                response_trace=first_pulse_dict['response'].copy(t0=0) #reset time traces so can use fixed xoffset from average fit
+    #            # weight parts of the trace during fitting
+                dt = response_trace.dt
+                pulse_ind=first_pulse_dict['pulse_ind']-first_pulse_dict['rec_start'] #get pulse indicies 
+                weight = np.ones(len(response_trace.data))*10.  #set everything to ten initially
+                weight[pulse_ind:pulse_ind+int(3e-3/dt)] = 0.   #area around stim artifact
+                weight[pulse_ind+int(3e-3/dt):pulse_ind+int(15e-3/dt)] = 30.  #area around steep PSP rise 
+                
+                # fit single psps while allowing all parameters to vary
+                single_psp_fit_free = fit_psp(response_trace, 
+                                   xoffset=(.011, -float('inf'), float('inf')),
+                                   sign='any', 
+                                   weight=weight) 
+
+                # fit single psps while fixing xoffset, rise_time, and decay_tau
+                single_psp_fit_fixed = fit_psp(response_trace, 
+                                               xoffset=(ave_psp_fit.best_values['xoffset'],'fixed'),
+                                               rise_time=(ave_psp_fit.best_values['rise_time'], 'fixed'),
+                                               decay_tau=(ave_psp_fit.best_values['decay_tau'], 'fixed'),
+                                               sign='any', 
+                                               weight=weight) 
+                
+                time_values=response_trace.time_values
+                fig=plt.figure(figsize=(20,8))
+                a1=fig.add_subplot(2,1,1)
+                a1.plot(time_values, first_pulse_dict['pre_rec'].data)
+                a2=a1.twinx()
+                a2.plot(time_values, first_pulse_dict['command'].data)
+                plt.title('uid %s, pre/post electrodes %d, %d' % (expt.uid, pre_electrode_id, post_electrode_id) + ', nrmse,' + str(single_psp_fit_free.nrmse()))
+                
+                ax=fig.add_subplot(2,1,2)
+                ax2=ax.twinx()
+                ax.plot(time_values, single_psp_fit_free.data, 'b', label='data')
+                ax.plot(time_values, single_psp_fit_free.best_fit, 'g', lw=5, label='free fit')
+                ax.plot(time_values, single_psp_fit_fixed.best_fit, 'c', lw=5, label='fixed fit, amp=%.3g' % (single_psp_fit_fixed.best_values['amp']))                
+                ax2.plot(time_values, weight, 'r', label='weighting')
+                ax.legend()
+                plt.tight_layout()
+                plt.show()
+            
+
 #            #---------------------------------------------------------------------------------
 
             
