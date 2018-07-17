@@ -14,20 +14,26 @@ from neuroanalysis.data import TraceList
 
 desired_organism = 'human'
 
-def plot_trace_views(num_subplot, trace_view, title=None):
-    t, v = make_plotting_arrays(trace_view)
-    plt.subplot(num_subplot[0], 1, num_subplot[1])
-    if title:
-        plt.title(title)
-    plt.plot(t,v)
 
-def make_plotting_arrays(trace_view):
-    voltage_trace = trace_view.data
-    dt = trace_view.dt
-    time_trace = np.arange(0, len(voltage_trace)*dt+dt, dt) #create time values a bit longer so not to have fill issues
-    time_trace = time_trace[0:len(voltage_trace)] # resize data_trace incase it is too long
-    return time_trace, voltage_trace
 
+def measure_amp(trace, baseline=(6e-3, 8e-3), response=(13e-3, 17e-3)):
+    '''This function is altered from PSP_amp_vs_time.py that was used to measure amplitude.
+    Returns the largest deflection during a response window from the baseline average to 
+    define psp amplitude. 
+    
+    input:
+    ------
+    trace: trace object
+    baseline: tuple with start and end time points (seconds) to define baseline
+    response: tuple with start and end time points (seconds) to define the region of the amplitude
+    '''
+    baseline = trace.time_slice(*baseline).data.mean()
+    max_first_peak_region = trace.time_slice(*response).data.max()
+    min_first_peak_region = trace.time_slice(*response).data.min()
+    bsub=np.array([max_first_peak_region-baseline, min_first_peak_region-baseline])
+    amp=bsub[np.where(abs(bsub)==max(abs(bsub)))[0][0]] #find the absolute maximum deflection from base_line
+    return amp
+    
 def calculate_base_line(baseline_trace_view):
     '''return the average (voltage) for the data in a trace_view object'''
     return np.average(baseline.baseline_trace_view)
@@ -36,7 +42,6 @@ def calculate_base_line(baseline_trace_view):
 expts = cached_experiments()
 selected_expt_list = expts.select(organism=desired_organism)
 
-uid_skip=[]
 for connection in selected_expt_list.connection_summary():        
     cells = connection['cells'] #(pre, post) synaptic *Cell* objects
     expt = connection['expt'] #*Experiment* object
@@ -82,6 +87,7 @@ for connection in selected_expt_list.connection_summary():
             else: # selects the first pulse data and excludes data that doesn't pass the excitatory qc
                 for pulse in spike_data:
                     if pulse['pulse_n'] == 1 and pulse['ex_qc_pass'] == True:
+                        pulse['sweep_id']=sweep_id
                         first_pulse_list.append(pulse)
                                             
         # if there are sweeps do the analysis
@@ -108,40 +114,29 @@ for connection in selected_expt_list.connection_summary():
                                xoffset=(pre_pad+2e-3, pre_pad, pre_pad+5e-3), #since these are spike aligned the psp should not happen before the spike that happens at pre_pad by definition 
                                sign='any', 
                                weight=weight) 
-            
 
+            # if the synapse is not small skip
+            if ave_psp_fit.best_values['amp']>.1e-3 or (expt.uid=='1494361299.85' and  pre_electrode_id==7 and post_electrode_id==0):
+                continue
+            
+            # plot average fit
             plt.figure()
             c1=plt.subplot(2,1,1)
             c1.plot(avg_command.time_values, avg_command.data)
             c2=c1.twinx()
-            c2.plot(avg_voltage.time_values, weight, 'r')
-            plt.title('average command')
+            c2.plot(avg_voltage.time_values, weight, 'k')
+            plt.title('uid %s, pre/post electrodes %d, %d, average command, %s individual sweeps' % (expt.uid, pre_electrode_id, post_electrode_id, len(first_pulse_list)))
             ax1=plt.subplot(2,1,2)
             ax1.plot(avg_voltage.time_values, avg_voltage.data, label='data')
-            ax1.plot(avg_voltage.time_values, ave_psp_fit.best_fit, 'g', label='fit')
+            ax1.plot(avg_voltage.time_values, ave_psp_fit.best_fit, 'g', lw=3, label='fit, amp= %g' % ave_psp_fit.best_values['amp'])
             ax2=ax1.twinx()
-            ax2.plot(avg_voltage.time_values, weight, 'r', label='weight')
-            plt.title('mean baseline subtracted spike aligned')
+            ax2.plot(avg_voltage.time_values, weight, 'k', label='weight')
+            plt.title('mean baseline subtracted spike aligned, nrmse=%.3g' % ave_psp_fit.nrmse())
             plt.show()
-#-----------------------------------------------------------------------
-            
-#             
-##            # plotting to see what the spikes look like
-##            plt.figure("aligned_spikes")
-##            plt.subplot(3,1,1)
-##            plt.plot(first_pulse_dict['command'].data)
-##            plt.title('command')
-##            plt.subplot(3,1,2)
-##            plt.plot(first_pulse_dict['pre_rec'].data)
-##            plt.title('pre synaptic response')
-##            plt.subplot(3,1,3)
-##            plt.plot(first_pulse_dict['response'].data)
-##            plt.title('post synaptic response')
-#
-#            # ----Note that we may want to put a induction frequency filter here---
-#            
-#            no_skipping_sweep_count=no_skipping_sweep_count+1 #records if a sweep made it though filters
-#           
+
+            #-----------single psp fitting------------------------
+                
+            amplitude_comparison=[] #initalize matrix for comparison of amplitudes via different algorithms
             for first_pulse_dict in first_pulse_list:
                 response_trace=first_pulse_dict['response'].copy(t0=0) #reset time traces so can use fixed xoffset from average fit
     #            # weight parts of the trace during fitting
@@ -150,6 +145,7 @@ for connection in selected_expt_list.connection_summary():
                 weight = np.ones(len(response_trace.data))*10.  #set everything to ten initially
                 weight[pulse_ind:pulse_ind+int(3e-3/dt)] = 0.   #area around stim artifact
                 weight[pulse_ind+int(3e-3/dt):pulse_ind+int(15e-3/dt)] = 30.  #area around steep PSP rise 
+                weight[len(avg_voltage):] = 0 # give decay zero weight
                 
                 # fit single psps while allowing all parameters to vary
                 single_psp_fit_free = fit_psp(response_trace, 
@@ -157,33 +153,63 @@ for connection in selected_expt_list.connection_summary():
                                    sign='any', 
                                    weight=weight) 
 
+                avg_xoffset=ave_psp_fit.best_values['xoffset']
+                
                 # fit single psps while fixing xoffset, rise_time, and decay_tau
                 single_psp_fit_fixed = fit_psp(response_trace, 
-                                               xoffset=(ave_psp_fit.best_values['xoffset'],'fixed'),
+                                               xoffset=(avg_xoffset,'fixed'),
                                                rise_time=(ave_psp_fit.best_values['rise_time'], 'fixed'),
                                                decay_tau=(ave_psp_fit.best_values['decay_tau'], 'fixed'),
                                                sign='any', 
-                                               weight=weight) 
+                                               weight=weight)
                 
-                time_values=response_trace.time_values
-                fig=plt.figure(figsize=(20,8))
-                a1=fig.add_subplot(2,1,1)
-                a1.plot(time_values, first_pulse_dict['pre_rec'].data)
-                a2=a1.twinx()
-                a2.plot(time_values, first_pulse_dict['command'].data)
-                plt.title('uid %s, pre/post electrodes %d, %d' % (expt.uid, pre_electrode_id, post_electrode_id) + ', nrmse,' + str(single_psp_fit_free.nrmse()))
+                # fit single psps while using a small jitter for xoffset, and rise_time, and fixing decay_tau
+                xoff_min=max(avg_xoffset-.5e-3, pre_pad) #do not allow minimum jitter to go below the spike in the case in which xoffset of average is at the spike (which is at the location of pre_pad)
+                single_psp_fit_small_bounds = fit_psp(response_trace, 
+                                               xoffset=(avg_xoffset, xoff_min, avg_xoffset+.5e-3),
+                                               rise_time=(ave_psp_fit.best_values['rise_time'], 0., ave_psp_fit.best_values['rise_time']),
+                                               decay_tau=(ave_psp_fit.best_values['decay_tau'], 'fixed'),
+                                               sign='any', 
+                                               weight=weight)
+             
+                if np.isclose(single_psp_fit_small_bounds.best_values['rise_time'], 0.):
+                    warnings.warn('the rise time is hitting zero')
+                # plot single fits
+                if True: #single_psp_fit_fixed.best_values['amp']<0:
+                    time_values=response_trace.time_values
+                    fig=plt.figure(figsize=(20,8))
+                    a1=fig.add_subplot(2,1,1)
+                    a1.plot(time_values, first_pulse_dict['pre_rec'].data)
+                    a2=a1.twinx()
+                    a2.plot(time_values, first_pulse_dict['command'].data)
+                    plt.title('uid %s, pre/post electrodes %d, %d' % (expt.uid, pre_electrode_id, post_electrode_id))
+                    
+                    ax=fig.add_subplot(2,1,2)
+                    ax.plot(time_values, single_psp_fit_free.data, 'b', label='data')
+                    ax.plot(time_values, single_psp_fit_free.best_fit, 'g', lw=5, label='free fit, amp=%.3g' % single_psp_fit_free.best_values['amp'])
+                    ax.plot(time_values, single_psp_fit_fixed.best_fit, 'c', lw=5, label='fixed fit, amp=%.3g' % (single_psp_fit_fixed.best_values['amp']))                
+                    ax.plot(avg_voltage.time_values, ave_psp_fit.best_fit+first_pulse_dict['baseline'].mean(), 'r', label='average fit, amp=%.3g' % ave_psp_fit.best_values['amp']) #note adding base line so average can be on same scale
+                    ax.plot(time_values, single_psp_fit_small_bounds.best_fit, 'm', lw=5, label='small_bounds, amp=%.3g' % single_psp_fit_small_bounds.best_values['amp'])                
+                    ax2=ax.twinx()
+                    ax2.plot(time_values, weight, 'k', label='weight')
+                    ax.legend()
+                    ax2.legend()
+                    plt.title('sweep id=%d, nrmse=%.3g' % (first_pulse_dict['sweep_id'], single_psp_fit_free.nrmse()))
+                    plt.tight_layout()
+                    plt.show()
+
+                # find the deflection found by measuring min or max individual psp
+                measured_deflection = measure_amp(response_trace, baseline=(6e-3, 8e-3), response=(12e-3, 16e-3)) # measured deflection 
                 
-                ax=fig.add_subplot(2,1,2)
-                ax2=ax.twinx()
-                ax.plot(time_values, single_psp_fit_free.data, 'b', label='data')
-                ax.plot(time_values, single_psp_fit_free.best_fit, 'g', lw=5, label='free fit')
-                ax.plot(time_values, single_psp_fit_fixed.best_fit, 'c', lw=5, label='fixed fit, amp=%.3g' % (single_psp_fit_fixed.best_values['amp']))                
-                ax2.plot(time_values, weight, 'r', label='weighting')
-                ax.legend()
-                plt.tight_layout()
-                plt.show()
-            
-
-#            #---------------------------------------------------------------------------------
-
-            
+                amplitude_comparison.append([single_psp_fit_fixed.best_values['amp'], single_psp_fit_free.best_values['amp'], measured_deflection])
+                
+            plt.figure()
+            fixed=[a[0] for a in amplitude_comparison]
+            measured=[a[2] for a in amplitude_comparison]
+            plt.plot(fixed, measured, '.')
+            x,y=plt.xlim()
+            plt.plot([x,y], [x,y], 'r')
+            plt.xlabel('fit via fixing several parameters')
+            plt.ylabel('measured via min/max data')
+            plt.title('uid %s, pre/post electrodes %d, %d' % (expt.uid, pre_electrode_id, post_electrode_id))
+            plt.show()
