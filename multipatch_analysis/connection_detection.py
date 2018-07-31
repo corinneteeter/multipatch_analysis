@@ -235,7 +235,7 @@ class MultiPatchExperimentAnalyzer(Analyzer):
                 continue
             
             if stim_filter is not None:
-                stim_name = pre_rec.meta['stim_name']
+                stim_name = pre_rec.stimulus.description
                 if stim_filter not in stim_name:
                     continue
             
@@ -715,7 +715,7 @@ def fit_psp(response,
         weight[int(12e-3/dt):int(19e-3/dt)] = 30.  #area around steep PSP rise 
     elif weight is False: #do not weight any part of the stimulus
         weight = np.ones(len(y))
-    elif weight:  #works if there is a value specified in weight
+    elif 'weight' in vars():  #works if there is a value specified in weight
         if len(weight) != len(y):
             raise Exception('the weight and array vectors are not the same length') 
     

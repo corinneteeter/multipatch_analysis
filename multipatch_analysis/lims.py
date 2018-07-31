@@ -190,7 +190,7 @@ def specimen_images(specimen):
                 image_files.setdefault(key, []).append(image['storage_directory'].rstrip('/') + '/' + image['jp2'])
             for k in image_ids:
                 # not sure how to generate an image stack url
-                images.append({'id':image_ids[k], 'file': image_files[k], 'treatment': k[0], 'resolution': k[1], 'url': None})
+                images.append({'id':image_ids[k], 'file': image_files[k], 'treatment': k[0], 'resolution': k[1], 'url': None, 'image_series': image_series['id']})
         else:
             for image in results:
                 if image['storage_directory'] is None:
@@ -198,9 +198,37 @@ def specimen_images(specimen):
                 else:
                     path = image['storage_directory'].rstrip('/') + '/' + image['jp2']
                 url = "http://lims2/siv?sub_image=%d" % image['id']
-                images.append({'id':image['id'], 'file': path, 'treatment': image['name'], 'resolution': image['resolution'], 'url': url})
+                images.append({'id':image['id'], 'file': path, 'treatment': image['name'], 'resolution': image['resolution'], 'url': url, 'image_series': image_series['id']})
             
     return images
+
+
+def specimen_20x_image(specimen, treatment='Biocytin'):
+    """Return the path to a 20x aff image file.
+    """
+    images = specimen_images(specimen)
+    for image in images:
+        if image['treatment'] == treatment:
+            file_base = os.path.splitext(image['file'])[0]
+            # Double // ensures the path is treated as a network location on windows.
+            # On posix, this should have no effect.
+            return '//' + file_base.lstrip('/') + '.aff'
+    return None
+
+
+def specimen_species(specimen_name):
+    """returns species information
+    """
+    q = """
+    select organisms.name as species 
+    from specimens left join donors on specimens.donor_id = donors.id
+    left join organisms on donors.organism_id = organisms.id
+    where specimens.name = '%s';
+    """ % specimen_name
+    r = lims.query(q)
+    if len(r) == 0:
+        raise ValueError("Could not find donor information")
+    return r[0]['species']
 
 
 def specimen_id_from_name(spec_name):
@@ -298,7 +326,7 @@ def cell_cluster_data_paths(specimen):
     """ % specimen)
     return [r['storage_directory'] for r in recs]
 
-
+  
 def specimen_metadata(specimen):
     if not isinstance(specimen, int):
         specimen = specimen_id_from_name(specimen)
@@ -308,6 +336,7 @@ def specimen_metadata(specimen):
     meta = recs[0]['data']
     if meta == '':
         return None
+
     if isinstance(meta, basestring):
         meta = json.loads(meta)  # unserialization corrects for a LIMS bug; we can remove this later.
     return meta
@@ -338,6 +367,34 @@ def filename_base(specimen_id, acq_timestamp):
     """Return a base filename string to be used for all LIMS uploads.
     """
     return "synphys-%d-%s" % (specimen_id, acq_timestamp)
+
+
+def get_incoming_dir(specimen_name):
+    """Returns the path for incoming files for each project
+    """
+    q = """
+    select projects.incoming_directory from projects 
+    left join specimens on projects.id = specimens.project_id
+    where specimens.name='%s'
+    """ % specimen_name
+    recs = lims.query(q)
+    if recs[0]['incoming_directory'] == None:
+        trigger_dir = get_trigger_dir(specimen_name)
+        return os.path.dirname(os.path.dirname(trigger_dir))
+    else:
+        return recs[0]['incoming_directory']
+
+
+def get_trigger_dir(specimen_name):
+    """Returns the path for trigger files for each project
+    """
+    q = """
+    select projects.trigger_dir from projects 
+    left join specimens on projects.id = specimens.project_id
+    where specimens.name  = '%s'
+    """ % specimen_name
+    recs = lims.query(q)
+    return recs[0]['trigger_dir']
 
 
 def submit_expt(spec_name, acq_timestamp, nwb_file, json_file):
@@ -435,6 +492,22 @@ def expt_cluster_ids(specimen, acq_timestamp):
         if meta is not None and meta['acq_timestamp'] == acq_timestamp:
             cids.append(cid)
     return cids
+
+
+def cluster_cells(cluster):
+    """Return information about a CellCluster's child cells.
+    """
+    if not isinstance(cluster, int):
+        cluster = specimen_id_from_name(cluster)
+    
+    q = """select child.id, child.name, child.x_coord, child.y_coord, child.external_specimen_name, child.ephys_qc_result
+    from specimens parent 
+    left join specimens child on child.parent_id=parent.id 
+    where parent.id=%d
+    """ % cluster
+
+    recs = lims.query(q)
+    return recs
 
 
 if __name__ == '__main__':

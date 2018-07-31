@@ -5,8 +5,8 @@ import os, sys, time
 def sync_dir(source_path, dest_path, test=False):
     """Safely duplicate a directory structure
     """
-    assert os.path.isdir(source_path)
-    assert os.path.isdir(dest_path)
+    assert os.path.isdir(source_path), 'Source path "%s" does not exist.' % source_path
+    assert os.path.isdir(dest_path), 'Destination path "%s" does not exist.' % dest_path
 
     for subpath, subdirs, files in os.walk(source_path):
         rel = os.path.relpath(subpath, source_path)
@@ -48,6 +48,10 @@ def safe_copy(src, dst, test=False):
     try:
         new_name = None
         print("copy: %s => %s" % (src, dst))
+        if os.path.exists(tmp_dst):
+            print("  remove stale .partial file")
+            if test is False:
+                os.remove(tmp_dst)
         if test is False:
             chunk_copy(src, tmp_dst)
         if os.path.exists(dst):
@@ -59,9 +63,10 @@ def safe_copy(src, dst, test=False):
                 if not os.path.exists(new_name):
                     break
                 i += 1
-            print("rename:", dst, new_name)
+            print("  rename:", dst, new_name)
             if test is False:
                 os.rename(dst, new_name)
+            print("  done")
         if test is False:
             os.rename(tmp_dst, dst)
     except Exception:
