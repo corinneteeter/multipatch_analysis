@@ -150,7 +150,7 @@ if __name__ == '__main__':
         pg.dbg()
 
     # load file that specifies ids to use (made by first_pulse_feature.py code)
-    file=open('pulse_expt_ids_human.pkl')
+    file=open('/home/corinnet/workspace/aiephys/multipatch_analysis/analyses/pulse_expt_ids.pkl')
     Stephs_data=pickle.load(file)
     file.close()
     Steph_uids=np.array([])
@@ -491,7 +491,7 @@ if __name__ == '__main__':
                                'f_pvalues':f_pvalues,
                                'max_residuals':max_residuals}
         
-#    ju.write("PSP_vs_time_output_data/uid_included_02_20_18.json", dictionary)
+    ju.write("PSP_vs_time_output_data/7_30_2018.json", dictionary)
     if not os.path.isdir("PSP_vs_time_output_data"):
         os.mkdir("PSP_vs_time_output_data")
     ju.write("PSP_vs_time_output_data/6_13_2017_human.json", dictionary)
