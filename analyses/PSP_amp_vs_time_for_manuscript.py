@@ -45,11 +45,11 @@ if use_qt_plot==True:
     import pyqtgraph as pg
 
 Stephs_data=np.array([
-    # [('unknown', 'unknown'),	('1501090950.86', 8, 1)],
-    # [('unknown', 'unknown'),	('1501101571.17', 1, 5)],
-    # [('unknown', 'unknown'),	('1501101571.17', 1, 7)],
-    # [('unknown', 'unknown'),	('1501101571.17', 7, 5)],
-    # [('unknown', 'unknown'),	('1501104688.89', 7, 3)],
+    [('unknown', 'unknown'),	('1501090950.86', 8, 1)],
+    [('unknown', 'unknown'),	('1501101571.17', 1, 5)],
+    [('unknown', 'unknown'),	('1501101571.17', 1, 7)],
+    [('unknown', 'unknown'),	('1501101571.17', 7, 5)],
+    [('unknown', 'unknown'),	('1501104688.89', 7, 3)],
     [('unknown', 'unknown'),	('1501621744.85', 1, 6)],
     [('unknown', 'unknown'),	('1501621744.85', 6, 1)],
     [('unknown', 'unknown'),	('1501627688.56', 3, 8)],
@@ -57,55 +57,56 @@ Stephs_data=np.array([
     [('unknown', 'unknown'),	('1501627688.56', 8, 3)],
     [('unknown', 'unknown'),	('1501792378.34', 2, 8)],
     [('unknown', 'unknown'),	('1501792378.34', 8, 2)],
- #   [('rorb', 'rorb'),	('1498687063.99', 7, 1)],
+    [('rorb', 'rorb'),	('1498687063.99', 7, 1)],
     [('rorb', 'rorb'),	('1502301827.80', 6, 8)],
     [('rorb', 'rorb'),	('1502301827.80', 8, 6)],
     [('rorb', 'rorb'),	('1523470754.85', 3, 4)],
     [('rorb', 'rorb'),	('1523470754.85', 4, 3)],
     [('rorb', 'rorb'),	('1523470754.85', 4, 6)],
     [('rorb', 'rorb'),	('1523470754.85', 4, 7)],
-    [('rorb', 'rorb'),	('1523470754.85', 6, 4)],
+    [('rorb', 'rorb'),	('1523470754.85', 6, 4)], #unknown in file
     [('rorb', 'rorb'),	('1523470754.85', 7, 3)],
     [('rorb', 'rorb'),	('1523470754.85', 7, 4)],
     [('rorb', 'rorb'),	('1523470754.85', 7, 6)],
     [('rorb', 'rorb'),	('1523479910.95', 2, 3)],
-    # [('sim1', 'sim1'),	('1487107236.82', 7, 5)],
-    # [('sim1', 'sim1'),	('1487107236.82', 7, 2)],
-    # [('sim1', 'sim1'),	('1487367784.96', 6, 2)],
-    # [('sim1', 'sim1'),	('1487376645.68', 1, 7)],
-    # [('sim1', 'sim1'),	('1490642434.41', 5, 3)],
-    # [('sim1', 'sim1'),	('1490642434.41', 3, 5)],
-    # [('sim1', 'sim1'),	('1490642434.41', 7, 3)],
-    # [('sim1', 'sim1'),	('1490651407.27', 2, 5)],
-    # [('sim1', 'sim1'),	('1490651901.46', 4, 8)],
-    # [('sim1', 'sim1'),	('1497468556.18', 8, 2)],
-    # [('sim1', 'sim1'),	('1497468556.18', 8, 3)],
-    # [('sim1', 'sim1'),	('1497468556.18', 8, 6)],
-    # [('sim1', 'sim1'),	('1497468556.18', 2, 8)],
-    # [('sim1', 'sim1'),	('1497469151.70', 1, 2)],
-    # [('sim1', 'sim1'),	('1497469151.70', 1, 8)],
-    # [('sim1', 'sim1'),	('1497469151.70', 8, 5)],
-    # [('sim1', 'sim1'),	('1497469151.70', 8, 1)],
-    # [('sim1', 'sim1'),	('1497473076.69', 7, 4)],
-    # [('tlx3', 'tlx3'),	('1485904693.10', 8, 2)],
-    # [('tlx3', 'tlx3'),	('1492460382.78', 6, 2)],
-    # [('tlx3', 'tlx3'),	('1492460382.78', 4, 6)],
-    # [('tlx3', 'tlx3'),	('1492468194.97', 6, 5)],
-    # [('tlx3', 'tlx3'),	('1492545925.15', 2, 4)],
-    # [('tlx3', 'tlx3'),	('1492545925.15', 8, 5)],
-    # [('tlx3', 'tlx3'),	('1492545925.15', 4, 2)],
-    # [('tlx3', 'tlx3'),	('1492545925.15', 8, 6)],
-    # [('tlx3', 'tlx3'),	('1492546902.92', 2, 6)],
-    # [('tlx3', 'tlx3'),	('1492546902.92', 2, 8)],
-    # [('tlx3', 'tlx3'),	('1492546902.92', 4, 8)],
-    # [('tlx3', 'tlx3'),	('1492546902.92', 8, 2)],
-    # [('tlx3', 'tlx3'),	('1492637310.55', 5, 4)],
-    # [('tlx3', 'tlx3'),	('1492810479.48', 1, 7)],
-    # [('tlx3', 'tlx3'),	('1492812013.49', 5, 3)],
-    # [('tlx3', 'tlx3'),	('1494881995.55', 7, 1)],
+    [('sim1', 'sim1'),	('1487107236.82', 7, 5)],
+    [('sim1', 'sim1'),	('1487107236.82', 7, 2)],
+    [('sim1', 'sim1'),	('1487367784.96', 6, 2)],
+    [('sim1', 'sim1'),	('1487376645.68', 1, 7)],
+    [('sim1', 'sim1'),	('1490642434.41', 5, 3)],
+    [('sim1', 'sim1'),	('1490642434.41', 3, 5)],
+    [('sim1', 'sim1'),	('1490642434.41', 7, 3)],
+    [('sim1', 'sim1'),	('1490651407.27', 2, 5)],
+    [('sim1', 'sim1'),	('1490651901.46', 4, 8)],
+    [('sim1', 'sim1'),	('1497468556.18', 8, 2)],
+    [('sim1', 'sim1'),	('1497468556.18', 8, 3)],
+    [('sim1', 'sim1'),	('1497468556.18', 8, 6)],
+    [('sim1', 'sim1'),	('1497468556.18', 2, 8)],
+    [('sim1', 'sim1'),	('1497469151.70', 1, 2)],
+    [('sim1', 'sim1'),	('1497469151.70', 1, 8)],
+    [('sim1', 'sim1'),	('1497469151.70', 8, 5)],
+    [('sim1', 'sim1'),	('1497469151.70', 8, 1)],
+    [('sim1', 'sim1'),	('1497473076.69', 7, 4)],
+    [('tlx3', 'tlx3'),	('1485904693.10', 8, 2)],
+    [('tlx3', 'tlx3'),	('1492460382.78', 6, 2)],
+    [('tlx3', 'tlx3'),	('1492460382.78', 4, 6)],
+    [('tlx3', 'tlx3'),	('1492468194.97', 6, 5)],
+    [('tlx3', 'tlx3'),	('1492545925.15', 2, 4)],
+    [('tlx3', 'tlx3'),	('1492545925.15', 8, 5)],
+    [('tlx3', 'tlx3'),	('1492545925.15', 4, 2)],
+    [('tlx3', 'tlx3'),	('1492545925.15', 8, 6)],
+    [('tlx3', 'tlx3'),	('1492546902.92', 2, 6)],
+    [('tlx3', 'tlx3'),	('1492546902.92', 2, 8)],
+    [('tlx3', 'tlx3'),	('1492546902.92', 4, 8)],
+    [('tlx3', 'tlx3'),	('1492546902.92', 8, 2)],
+    [('tlx3', 'tlx3'),	('1492637310.55', 5, 4)],
+    [('tlx3', 'tlx3'),	('1492810479.48', 1, 7)],
+    [('tlx3', 'tlx3'),	('1492812013.49', 5, 3)],
+    [('tlx3', 'tlx3'),	('1494881995.55', 7, 1)],
     [('tlx3', 'tlx3'),	('1502920642.09', 7, 8)],
     [('ntsr1', 'ntsr1'),('1504737622.52', 8, 2)],
-    [('ntsr1', 'ntsr1'),('1529443918.26', 1, 6)]])
+    [('ntsr1', 'ntsr1'),('1529443918.26', 1, 6)]
+    ])
 
 
 Steph_uids=[l[1] for l in Stephs_data]
@@ -302,7 +303,7 @@ class fit_first_pulse():
         weight = np.ones(len(response_trace.data))*10.  #set everything to ten initially
         weight[pulse_ind:pulse_ind+int(3e-3/dt)] = 0.   #area around stim artifact
         weight[pulse_ind+int(3e-3/dt):pulse_ind+int(15e-3/dt)] = 30.  #area around steep PSP rise 
-        weight[len(self.avg_voltage):] = 0 # give decay zero weight
+        weight[pulse_ind+int(15e-3/dt):] = 0 # give decay zero weight
         
         # fit single psps while using a small jitter for xoffset, and rise_time, and fixing decay_tau
         avg_xoffset=self.ave_psp_fit.best_values['xoffset']
@@ -341,6 +342,8 @@ class fit_first_pulse():
     def plot_fit(self, fit, voltage, command, weight, title, 
                 measured_baseline=0,
                 measured_amp=False,
+                fit_amp=False,
+                nrmse=False,
                 show_plot=False,
                 save_name=False):
 
@@ -374,7 +377,7 @@ class fit_first_pulse():
         ax1.legend(lines_plot_2, label_plot_2)
         if measured_amp:
             ax1.plot(voltage.time_values*1.e3, np.ones(len(voltage.time_values))*measured_amp*1.e3, 'r--')
-            plt.title(title + ' nrmse=%.3g, fit amp:%.3g, measured amp:%3g' % (ave_psp_fit.nrmse(), ave_psp_fit.best_values['amp']*1.e3, measured_amp*1.e3))
+            plt.title(title + ' nrmse=%.3g, fit amp:%.3g, measured amp:%3g' % (nrmse, fit_amp*1.e3, measured_amp*1.e3))
         else:
             plt.title(title + ' nrmse=%.3g, fit amp:%.3g' % (ave_psp_fit.nrmse(), ave_psp_fit.best_values['amp']*1e-3))
 
@@ -383,6 +386,7 @@ class fit_first_pulse():
             plt.show()
         if save_name:
             plt.savefig(save_name)
+            plt.close()
 
 
 
@@ -455,6 +459,8 @@ if __name__ == '__main__':
                             first_pulse_dict['command'], 
                             weight_for_single, 
                             'SWEEP:'+str(first_pulse_dict['sweep_id'])+', ', 
+                            fit_amp=single_psp_fit.best_values['amp'],
+                            nrmse=single_psp_fit.nrmse(),
                             measured_baseline=baseline_value, 
                             measured_amp=measured_amp,
                             save_name=os.path.join(connection_path, 'Sweep_'+str(first_pulse_dict['sweep_id'])+'_'+name_string+'.png'))
@@ -467,20 +473,16 @@ if __name__ == '__main__':
                             measured_amp,
                             single_psp_fit.best_values['amp'],
                             first_pulse_dict['response'].t0,
+                            first_pulse_dict['command'].t0,
+                            single_psp_fit.nrmse(),
                             cells[0].cre_type,
                             cells[1].cre_type]) 
     
         out_df=pd.DataFrame(out_data)
-        out_df.columns=['uid','pre_cell_id','post_cell_id', 'sweep_id', 'measured_amp', 'fit_amp', 't0', 'pre_cre', 'post_cre']
+        out_df.columns=['uid','pre_cell_id','post_cell_id', 'sweep_id', 'measured_amp', 'fit_amp', 'response_t0', 'command_t0','nrmse', 'pre_cre', 'post_cre']
         out_df.to_csv(os.path.join(connection_path,'rundown08_03_2018.csv')) 
 
             
-
-
-
-    
-        
-
 # # some other options to potentially be able to choose from            
 # #            responses = analyzer.train_responses
 # #            pulse_offset = analyzer.pulse_offsets
