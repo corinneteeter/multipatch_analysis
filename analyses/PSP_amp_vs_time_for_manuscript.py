@@ -255,7 +255,14 @@ class fit_first_pulse():
                 for pulse in spike_data:
                     if pulse['pulse_n'] == 1:
                         pulse['sweep_id']=sweep_id
+                        pulse['global_spike_date_time']=pre_rec.start_time + datetime.timedelta(0, pulse['spike']['rise_index']*pulse['response'].dt)
+                        pulse['stim_type']=str(pre_rec.stimulus).split('"')[1]
                         first_pulse_list.append(pulse)
+        
+        # add a key that has the time since the first used spike
+        fpl_0=first_pulse_list[0]['global_spike_date_time']
+        for fpl in first_pulse_list:
+            fpl['global_seconds']=(fpl['global_spike_date_time']-fpl_0).total_seconds()
         
         return first_pulse_list
 
@@ -350,8 +357,8 @@ class fit_first_pulse():
         # plot average fit
         plt.figure(figsize=(14,14))
         c1=plt.subplot(2,1,1)
-        ln1=c1.plot(command.time_values*1.e3, command.data*1.e3, label='command')
-        c1.set_ylabel('voltage (mV)')
+        ln1=c1.plot(command.time_values*1.e3, command.data*1e3, label='command')
+        c1.set_ylabel('current injection (nA)')
         c2=c1.twinx()
         ln2=c2.plot(voltage.time_values*1.e3, weight, 'k', label='weight')
         c2.set_ylabel('weight')
@@ -379,7 +386,7 @@ class fit_first_pulse():
             ax1.plot(voltage.time_values*1.e3, np.ones(len(voltage.time_values))*measured_amp*1.e3, 'r--')
             plt.title(title + ' nrmse=%.3g, fit amp:%.3g, measured amp:%3g' % (nrmse, fit_amp*1.e3, measured_amp*1.e3))
         else:
-            plt.title(title + ' nrmse=%.3g, fit amp:%.3g' % (ave_psp_fit.nrmse(), ave_psp_fit.best_values['amp']*1e-3))
+            plt.title(title + ' nrmse=%.3g, fit amp:%.3g' % (fit.nrmse(), fit.best_values['amp']*1e3))
 
         plt.tight_layout()
         if show_plot:
@@ -472,15 +479,27 @@ if __name__ == '__main__':
                             first_pulse_dict['sweep_id'],
                             measured_amp,
                             single_psp_fit.best_values['amp'],
-                            first_pulse_dict['response'].t0,
-                            first_pulse_dict['command'].t0,
+                            first_pulse_dict['global_seconds'],
                             single_psp_fit.nrmse(),
                             cells[0].cre_type,
-                            cells[1].cre_type]) 
+                            cells[1].cre_type,
+                            first_pulse_dict['stim_type'],
+                            first_pulse_dict['global_spike_date_time']]) 
     
         out_df=pd.DataFrame(out_data)
-        out_df.columns=['uid','pre_cell_id','post_cell_id', 'sweep_id', 'measured_amp', 'fit_amp', 'response_t0', 'command_t0','nrmse', 'pre_cre', 'post_cre']
-        out_df.to_csv(os.path.join(connection_path,'rundown08_03_2018.csv')) 
+        out_df.columns=['uid',
+                        'pre_cell_id',
+                        'post_cell_id', 
+                        'sweep_id', 
+                        'measured_amp', 
+                        'fit_amp', 
+                        'time',
+                        'nrmse', 
+                        'pre_cre', 
+                        'post_cre', 
+                        'stim_type',
+                        'global_spike_date_time']
+        out_df.to_csv(os.path.join(connection_path,'rundown.csv')) 
 
             
 # # some other options to potentially be able to choose from            
