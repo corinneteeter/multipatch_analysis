@@ -201,7 +201,112 @@ def average_via_bins(time_list, data_list, bin_size=10):
     assert len(average_data)==len(time_bin_middle), "data length doesn't match sec_since_t0 length"
     return time_bin_middle, average_data, std_err_data
 
+def measure_amp_single(first_pulse_dict):
+    response_trace=first_pulse_dict['response'].copy(t0=0) #reset time traces so can use fixed xoffset from average fit
+    dt = response_trace.dt
+    pulse_ind=first_pulse_dict['pulse_ind']-first_pulse_dict['rec_start'] #get pulse indicies 
 
+    psp_region_start_ind=pulse_ind+int(3e-3/dt)
+    psp_region_end_ind=pulse_ind+int(15e-3/dt)
+
+    baseline = first_pulse_dict['baseline'].mean()  #baseline voltage
+    # get the maximum value in a region around where psp amp should be
+    max_first_peak_region = response_trace.data[psp_region_start_ind:psp_region_end_ind].max()
+    # get the minimum value in a region around where psp amp should be
+    min_first_peak_region = response_trace.data[psp_region_start_ind:psp_region_end_ind].min()
+    # subtract the baseline value from min and max values
+    bsub=np.array([max_first_peak_region-baseline, min_first_peak_region-baseline])
+    #find the absolute maximum deflection from base_line
+    relative_amp=bsub[np.where(abs(bsub)==max(abs(bsub)))[0][0]] 
+    # if plot==True:
+    #     plt.figure()
+    #     plt.baseline(response_trace.data)
+    #     plt.show()
+    return relative_amp, baseline
+
+# def trace_avg(response_list):
+# # doc string commented out to discourage code reuse given the change of values of t0
+# #    """
+# #    Parameters
+# #    ----------
+# #    response_list : list of neuroanalysis.data.TraceView objects
+# #        neuroanalysis.data.TraceView object contains waveform data. 
+# #        
+# #    Returns
+# #    -------
+# #    bsub_mean : neuroanalysis.data.Trace object
+# #        averages and baseline subtracts the ephys waveform data in the 
+# #        input response_list TraceView objects and replaces the .t0 value with 0. 
+# #    
+# #    """
+#     for trace in response_list: 
+#         trace.t0 = 0  #align traces for the use of TraceList().mean() funtion
+#     avg_trace = TraceList(response_list).mean() #returns the average of the wave form in a of a neuroanalysis.data.Trace object 
+#     bsub_mean = bsub(avg_trace) #returns a copy of avg_trace but replaces the ephys waveform in .data with the base_line subtracted wave_form
+    
+#     return bsub_mean
+
+# def get_amplitude(response_list):
+#     """
+#     FROM STEPHS FIRST PULSE CODE
+#     Parameters
+#     ----------
+#     response_list : list of neuroanalysis.data.TraceView objects
+#         neuroanalysis.data.TraceView object contains waveform data. 
+#     """
+    
+#     if len(response_list) == 1:
+#         bsub_mean = bsub(response_list[0])
+#     else:
+#         bsub_mean = trace_avg(response_list)
+#     dt = bsub_mean.dt
+#     neg = bsub_mean.data[int(13e-3/dt):].min()
+#     pos = bsub_mean.data[int(13e-3/dt):].max()
+#     avg_amp = neg if abs(neg) > abs(pos) else pos
+#     amp_sign = '-' if avg_amp < 0 else '+'
+#     peak_ind = list(bsub_mean.data).index(avg_amp)
+#     peak_t = bsub_mean.time_values[peak_ind]
+#     return bsub_mean, avg_amp, amp_sign, peak_t
+
+# def bsub(trace):
+#     """FROM STEPHS CODE.Returns a copy of the neuroanalysis.data.Trace object 
+#     where the ephys data waveform is replaced with a baseline 
+#     subtracted ephys data waveform.  
+    
+#     Parameters
+#     ----------
+#     trace : neuroanalysis.data.Trace object  
+        
+#     Returns
+#     -------
+#     bsub_trace : neuroanalysis.data.Trace object
+#        Ephys data waveform is replaced with a baseline subtracted ephys data waveform
+#     """
+#     data = trace.data # actual numpy array of time series ephys waveform
+#     dt = trace.dt # time step of the data
+#     base = float_mode(data[:int(10e-3 / dt)]) # baseline value for trace 
+#     bsub_trace = trace.copy(data=data - base) # new neuroanalysis.data.Trace object for baseline subtracted data
+#     return bsub_trace
+
+def remove_baseline_instabilities(pulse_list, baseline=2):
+    """
+    """
+    for_std=[]
+    for pulse in pulse_list:
+        bl=pulse['baseline'].copy(data=pulse['baseline'].data-float_mode(pulse['baseline'].data), t0=0)
+        for_std.append(bl)
+    
+    trace_mean=TraceList(for_std).mean()
+    base_std=np.std(trace_mean.data)
+
+#    base_std = np.std(for_std)
+    stable_baseline=[]
+    for pulse in pulse_list:
+        bl=pulse['baseline'].data
+        if np.abs(np.mean(bl-float_mode(bl))) < (baseline * base_std):
+            stable_baseline.append(pulse)
+
+    return stable_baseline
 
 class fit_first_pulse():
     def __init__(self, expt, pre_syn_electrode_id, post_syn_electrode_id, pre_pad=10e-3, post_pad=50e-3):    
@@ -221,7 +326,9 @@ class fit_first_pulse():
         self.post_pad = post_pad
 
     def get_spike_aligned_first_pulses(self):
-        """Get all the first pulses recorded in current clamp and align them by spikes
+        """Get all the first pulses that are recorded in current clamp
+        and have a holding potential of between -65 and -75 and aligns 
+        them by spikes.
         Returns
         -------
         first_pulse_list
@@ -254,17 +361,23 @@ class fit_first_pulse():
             else: # appends sweep to the first pulse data 
                 for pulse in spike_data:
                     if pulse['pulse_n'] == 1:
+                        if post_rec.holding_potential<-0.075 or post_rec.holding_potential>-0.065:
+                            continue     
                         pulse['sweep_id']=sweep_id
                         pulse['global_spike_date_time']=pre_rec.start_time + datetime.timedelta(0, pulse['spike']['rise_index']*pulse['response'].dt)
-                        pulse['stim_type']=str(pre_rec.stimulus).split('"')[1]
+                        #pulse['stim_type']=str(pre_rec.stimulus).split('"')[1]
+                        pulse['holding_potential']=post_rec.holding_potential
+                        pulse['stim_type']=analyzer.stim_params(pre_rec)[0]
                         first_pulse_list.append(pulse)
-        
+
         # add a key that has the time since the first used spike
         fpl_0=first_pulse_list[0]['global_spike_date_time']
         for fpl in first_pulse_list:
             fpl['global_seconds']=(fpl['global_spike_date_time']-fpl_0).total_seconds()
         
         return first_pulse_list
+
+
 
     def get_baseline_sub_average(self, first_pulse_list):
         """Substract the baseline for each individual fit and then
@@ -274,7 +387,6 @@ class fit_first_pulse():
         -----
         first_pulse_list
         """        
-
         bsub_trace_list=[]
         command_trace_list=[]
         for sweep in first_pulse_list:
@@ -323,28 +435,7 @@ class fit_first_pulse():
                                         weight=weight)
         return single_psp_fit_small_bounds, weight
 
-    def measure_amp_single(self, first_pulse_dict):
-        response_trace=first_pulse_dict['response'].copy(t0=0) #reset time traces so can use fixed xoffset from average fit
-        dt = response_trace.dt
-        pulse_ind=first_pulse_dict['pulse_ind']-first_pulse_dict['rec_start'] #get pulse indicies 
 
-        psp_region_start_ind=pulse_ind+int(3e-3/dt)
-        psp_region_end_ind=pulse_ind+int(15e-3/dt)
-
-        baseline = first_pulse_dict['baseline'].mean()  #baseline voltage
-        # get the maximum value in a region around where psp amp should be
-        max_first_peak_region = response_trace.data[psp_region_start_ind:psp_region_end_ind].max()
-        # get the minimum value in a region around where psp amp should be
-        min_first_peak_region = response_trace.data[psp_region_start_ind:psp_region_end_ind].min()
-        # subtract the baseline value from min and max values
-        bsub=np.array([max_first_peak_region-baseline, min_first_peak_region-baseline])
-        #find the absolute maximum deflection from base_line
-        relative_amp=bsub[np.where(abs(bsub)==max(abs(bsub)))[0][0]] 
-        # if plot==True:
-        #     plt.figure()
-        #     plt.baseline(response_trace.data)
-        #     plt.show()
-        return relative_amp, baseline
 
     def plot_fit(self, fit, voltage, command, weight, title, 
                 measured_baseline=0,
@@ -397,6 +488,7 @@ class fit_first_pulse():
 
 
 
+
 if __name__ == '__main__':
 
     if use_qt_plot == True:
@@ -423,19 +515,24 @@ if __name__ == '__main__':
 
         # skip connection if not in Stephs set 
         if (expt.uid, pre_syn_cell_id, post_syn_cell_id) not in Steph_uids:
+#        if expt.uid!='1487367784.96' or pre_syn_cell_id!=6 or post_syn_cell_id!=2:
             continue
         else:
             print ("RUNNING: %s, cell ids:%s %s, electrode ids: %s %s" % (expt.uid, pre_syn_cell_id, post_syn_cell_id, pre_syn_electrode_id, post_syn_electrode_id))
 
         # initialize fitting class
         fitting=fit_first_pulse(expt, pre_syn_electrode_id, post_syn_electrode_id)
-        # get spike aligned first pulses
+        # get spike aligned first pulses at -70 holding potential
         first_pulse_list=fitting.get_spike_aligned_first_pulses()
-
+        
         # skip neuron if there is no data
         if not len(first_pulse_list)>0:
             continue
-        
+
+#        first_pulse_list=remove_baseline_instabilities(non_qc_first_pulse_list)
+ #       print('original_'+ str(len(non_qc_first_pulse_list))+'_reduced_'+ str(len(first_pulse_list))+' ,'+ str(len(non_qc_first_pulse_list)-len(first_pulse_list))+"pulses were removed for baseline")
+
+
         # Get the average of the baseline subtracted first pulses
         avg_voltage, dt, avg_command=fitting.get_baseline_sub_average(first_pulse_list)
         ave_psp_fit, weight_for_average=fitting.fit_avg()
@@ -458,7 +555,7 @@ if __name__ == '__main__':
             # fit single pulse
             single_psp_fit, weight_for_single=fitting.fit_single(first_pulse_dict)
             # get measured baseline and individual psp amplitude
-            measured_amp, baseline_value=fitting.measure_amp_single(first_pulse_dict)
+            measured_amp, baseline_value=measure_amp_single(first_pulse_dict)
             
             # plot the fit and compare with measured
             fitting.plot_fit(single_psp_fit, 
@@ -479,6 +576,8 @@ if __name__ == '__main__':
                             first_pulse_dict['sweep_id'],
                             measured_amp,
                             single_psp_fit.best_values['amp'],
+                            single_psp_fit.best_values['rise_time'],
+                            single_psp_fit.best_values['xoffset'],
                             first_pulse_dict['global_seconds'],
                             single_psp_fit.nrmse(),
                             cells[0].cre_type,
@@ -493,6 +592,8 @@ if __name__ == '__main__':
                         'sweep_id', 
                         'measured_amp', 
                         'fit_amp', 
+                        'fit_rise_time',
+                        'fit_xoffset',
                         'time',
                         'nrmse', 
                         'pre_cre', 
@@ -502,238 +603,3 @@ if __name__ == '__main__':
         out_df.to_csv(os.path.join(connection_path,'rundown.csv')) 
 
             
-# # some other options to potentially be able to choose from            
-# #            responses = analyzer.train_responses
-# #            pulse_offset = analyzer.pulse_offsets
-# #            response = analyzer.pulse_responses
-    
-#     #        plt.figure()
-#     #        for trace in amp_responses.responses:
-#     #            plt.plot(trace.time_values, trace.data)
-#     #            plt.title('responses')
-#     #        plt.figure()
-#     #        for trace in amp_responses.baselines:
-#     #            plt.plot(trace.time_values, trace.data)
-#     #            plt.title('baselines')         
-#     #        plt.show(block=False)
-    
-#             # figure out whether the trough or individual_first_peaks of the average synaptic trace is bigger and if that corresponds to the excitation of the neurons.  
-#             # i.e. if it is an excitatory synapse we would expect the max defection to be positive
-#             average = amp_responses.bsub_mean() #returns average synaptic response with the average baseline subtracted
-#             max_peak = measure_amp(average, min_or_max='max', baseline=(6e-3, 8e-3), response=(12e-3, 16e-3))
-#             min_peak = measure_amp(average, min_or_max='min', baseline=(6e-3, 8e-3), response=(12e-3, 16e-3))
-#             ave_deflection=max(abs(max_peak), abs(min_peak)) #individual_first_peaks of average trace
-#             max_min = "max" if abs(max_peak)> abs(min_peak) else "min"  #find whether the individual_first_peaks or trough of the first pulse average is larger 
-#             correct_syn_amp_dir = True
-#             if max_min == "min" and expt.cells[pre_id].cre_type in EXCITATORY_CRE_TYPES: 
-#                 print ("Whoa this synapse looks inhibitory when cre line would say it should be excitatory!!!" )  
-#                 correct_syn_amp_dir = False
-#             if max_min == "max" and expt.cells[pre_id].cre_type in INHIBITORY_CRE_TYPES: 
-#                 print ("Whoa this synapse looks excitatory when cre line would say it should be inhibitory!!!" )    
-#                 correct_syn_amp_dir = False  
-       
-#             # find the individual_first_peaks or trough of every potential event and plot their amplitude over sec_since_t0 of the experiment
-#             individual_first_peaks=[]
-#             individual_first_baselines=[]
-#             individual_start_times=[]
-#             individual_holding_potentials=[]
-#             sweep_numbers=[]
-#             ordered=sorted(amp_responses.responses, key=lambda rr:rr.start_time) #order the traces by individual_start_times during the experiment
-#             for jj, rr in enumerate(ordered):
-#                 individual_first_peaks.append(measure_amp(rr, min_or_max=max_min, baseline=(6e-3, 8e-3), response=(12e-3, 16e-3)))
-#                 individual_first_baselines.append(measure_amp(rr, min_or_max=max_min, baseline=(0e-3, 2e-3), response=(6e-3, 10e-3)))
-#                 individual_start_times.append(rr.start_time)  
-#                 individual_holding_potentials.append(rr.parent.parent.holding_potential)
-#                 sweep_numbers.append(float(rr.parent.parent._sweep._sweep_id))
-#                 #print ('for each first pulse of a synapse: individual_first_peaks', individual_first_peaks[-1], 'individual_first_baselines', individual_first_baselines[-1], 'individual_start_times', individual_start_times[-1], 'holding potential', individual_holding_potentials[-1], 'sweep_numbers', sweep_numbers[-1])      
-
-#     #        for trace in amp_responses.responses:
-#     #            plt.plot(trace.time_values, trace.data)
-#     #            plt.title('responses')
-#     #        plt.figure()
-#     #        for trace in amp_responses.baselines:
-#     #            plt.plot(trace.time_values, trace.data)
-#     #            plt.title('baselines')         
-#     #        plt.show()
-    
-#             # check if holding potential is within a desired range
-#             holding=np.mean(individual_holding_potentials) # average holding potential across plots
-#             #print ('holding potential is', holding)
-#             if holding>-0.072 and holding<-0.068:
-#                 holding_good_flag=True
-#             else:
-#                 holding_good_flag=False
-#             #print ('\tholding potential flag set to ', holding_good_flag)
-
-#             mean_base=np.mean(individual_first_baselines) # average individual_first_baselines across pulses of a synapse
-#             sweep_numbers=np.array(sweep_numbers)
-#             sec_since_t0=np.array(individual_start_times) - individual_start_times[0] # remap individual_start_times basis to be in reference to start of experiment
-#             sec_since_t0=np.array([td.total_seconds() for td in sec_since_t0])
-#             #TODO: !!!!from what I can tell, individual_first_peaks are already subtracting there individual baselines so I am not sure why it is being resubtracted below!!!
-#             peak_minus_base_average=np.array(individual_first_peaks)-mean_base # take each individual_first_peaks and put it in reference to the average individual_first_baselines
-#             smoothed=ndi.gaussian_filter(peak_minus_base_average, 2) # 
-#             t_slope, t_intercept, _,_,_=stats.linregress(sec_since_t0, peak_minus_base_average)
-#             sn_slope, sn_intercept, _,_,_=stats.linregress(sweep_numbers, peak_minus_base_average)
-            
-#             # can look at the output of the f-test in statsmodels
-#             # https://blog.datarobot.com/ordinary-least-squares-in-python
-#             # actually states what the summary numbers mean
-#             # https://en.wikipedia.org/wiki/Lack-of-fit_sum_of_squares
-#             # does a reasonable job of reporting what the numbers mean
-#             sm_lr=sm.OLS(peak_minus_base_average, sm.add_constant(sec_since_t0)) #Note statsmodels takes x,y in reverse order
-#             out=sm_lr.fit()
-#             t_f_pvalue=out.f_pvalue
-#             res=out.predict()
-#             t_max_residual=np.max([np.max(res), np.absolute(np.min(res))])
-            
-#             sm_lr=sm.OLS(peak_minus_base_average, sm.add_constant(sweep_numbers)) #Note statsmodels takes x,y in reverse order
-#             out=sm_lr.fit()
-#             sn_f_pvalue=out.f_pvalue
-#             res=out.predict()
-#             sn_max_residual=np.max([np.max(res), np.absolute(np.min(res))])
-            
-#             # Slope is very small here due to small amplitude.
-#             #    If voltage is fit in mV it will make scatter and 
-#             #    slope bigger.  Will f_pvalue stay the same?
-#             #print(out.summary())
-#             plt.figure(figsize=(16, 10))
-#             plt.subplot(3,1,1)
-#             plt.scatter(sec_since_t0, peak_minus_base_average)
-#             plt.plot(sec_since_t0, out.predict())
-#             plt.ylim([min(peak_minus_base_average), max(peak_minus_base_average)])
-#             plt.xlabel('time (s)')
-#             plt.ylabel('amplitude (V)')
-#             plt.title(expt.uid+'_'+str(pre_id)+'_'+str(post_id)+' fit, slope:'+str(t_slope)+', intercept:'+str(t_intercept)+'\n, f_pvalue: '+str(t_f_pvalue)+', max. res.:'+str(t_max_residual))
-#             plt.subplot(3,1,2)
-#             residuals=peak_minus_base_average-out.predict()
-#             plt.scatter(sec_since_t0, residuals) #plotting residuals
-#             plt.ylim([min(residuals), max(residuals)])
-#             plt.title('residuals')
-#             plt.xlabel('time (s)')
-#             plt.ylabel('residual (V)')
-#             plt.subplot(3,1,3)
-#             plt.hist(residuals)
-#             plt.title('residuals')
-#             plt.ylabel('n')
-#             plt.xlabel('residuals (V)')    
-#             plt.tight_layout()
-#             plt.savefig(os.path.join('/home/corinnet/Desktop/human_rundown', expt.uid+'_'+str(pre_id)+'_'+str(post_id)+'.png'))
-#             plt.close()
-            
-#             def update_plots_and_dicts(qc_key):
-#                 '''updates and values for different qc groupings
-#                 inputs: string
-#                     options: 'correct_amp_good_HP','correct_amp_bad_HP', 'wrong_amp_good_HP', 'wrong_amp_bad_HP'
-#                 '''
-#                 if use_qt_plot==True:
-#                     ave_psp_plot.plot(average.time_values, average.data, pen=pg.mkPen(color=colors[qc_key])) #plot average of first pulse in each epoch of spikes of individual synapses
-#     #                time_vs_psp_plot.plot(np.array(sec_since_t0), smoothed, pen=pg.mkPen(color=colors[qc_key])) # (i, len(synapses)*1.3))
-#                     time_vs_psp_plot.plot(np.array(sec_since_t0), peak_minus_base_average, pen=pg.mkPen(color=colors[qc_key])) # (i, len(synapses)*1.3))
-#                     time_vs_psp_plot.plot(np.array(sec_since_t0), t_slope*np.array(sec_since_t0)+t_intercept, pen=pg.mkPen(color=colors[qc_key], style=pg.QtCore.Qt.DashLine)) # (i, len(synapses)*1.3))
-#     #                sweep_vs_psp_plot.plot(sweep_numbers, smoothed, pen=pg.mkPen(color=colors[qc_key]))
-#                     sweep_vs_psp_plot.plot(sweep_numbers, peak_minus_base_average, pen=pg.mkPen(color=colors[qc_key]))
-#                     sweep_vs_psp_plot.plot(sweep_numbers, sn_slope*sweep_numbers+sn_intercept, pen=pg.mkPen(color=colors[qc_key],style=pg.QtCore.Qt.DashLine)) # (i, len(synapses)*1.3))
-#                 slopes['sweep_numbers'][qc_key].append(sn_slope)
-#                 slopes['sec_since_t0'][qc_key].append(t_slope)
-#                 intercepts['sweep_numbers'][qc_key].append(sn_intercept)
-#                 intercepts['sec_since_t0'][qc_key].append(t_intercept)      
-#                 f_pvalues['sweep_numbers'][qc_key].append(sn_f_pvalue)
-#                 f_pvalues['sec_since_t0'][qc_key].append(t_f_pvalue)        
-#                 max_residuals['sweep_numbers'][qc_key].append(sn_max_residual)
-#                 max_residuals['sec_since_t0'][qc_key].append(t_max_residual)        
-            
-#             #TODO: check to see if this is a bug to only record in the optimal state.
-#             # record values for different qc states
-#             if correct_syn_amp_dir == True and holding_good_flag ==True:
-#                 print('recording synapse')
-#                 #these are appending array to be used futher before dictionary output
-#                 time_list.append(sec_since_t0)  
-#                 filtered.append(smoothed)   
-#                 raw.append(peak_minus_base_average) 
-#                 sweep_number_list.append(sweep_numbers) 
-                
-#                 #following appends a single value to a list and gets used in output dictionary
-#                 num_of_synapses=num_of_synapses+1 
-#                 update_plots_and_dicts('correct_amp_good_HP')
-#                 PSPs_amp_start.append(peak_minus_base_average[0])
-#                 PSPs_amp_ave.append(np.mean(peak_minus_base_average))
-#                 PSPs_amp_end.append(peak_minus_base_average[-1])
-#                 length_of_experiment.append(sec_since_t0[-1])
-         
-#             else: 
-#                 if correct_syn_amp_dir==True and holding_good_flag==False:
-#                     update_plots_and_dicts('correct_amp_bad_HP')
-#                 elif correct_syn_amp_dir==False and holding_good_flag==True:
-#                     update_plots_and_dicts('wrong_amp_good_HP')
-
-#                 elif correct_syn_amp_dir==False and holding_good_flag==False:
-#                     update_plots_and_dicts('wrong_amp_bad_HP')
-#                 else:
-#                     print(correct_syn_amp_dir)
-#                     print(holding_good_flag)
-#                     raise Exception("This flag combo doesn't exist")
-            
-#             print('done with one synapse')
-#             if use_qt_plot == True:
-#                 app.processEvents()
-
-        
-#         #because times of events aren't all at the same sec_since_t0, sec_since_t0 binning is needed to get average sec_since_t0 course
-#         time_points, time_avg_data, time_std_err=average_via_bins(time_list, raw, bin_size=60)
-#         if use_qt_plot == True:
-#             time_vs_psp_plot.plot(time_points, time_avg_data, pen=pg.mkPen(color='w', width=5)) #plots average of the data
-        
-#         sweeps, sweep_avg_data, sweep_std_err=average_via_bins(sweep_number_list, raw, bin_size=5)
-#         if use_qt_plot == True:
-#             sweep_vs_psp_plot.plot(sweeps, sweep_avg_data, pen=pg.mkPen(color='w', width=5)) #plots average of the data
-        
-#         dictionary[title_str]={'time_points': time_points, 
-#                                'time_avg_data':time_avg_data, 
-#                                'time_std_err':time_std_err, 
-#                                'num_of_synapses':num_of_synapses,
-#                                'sweeps':sweeps,
-#                                'sweep_avg_data':sweep_avg_data,
-#                                'sweep_std_err':sweep_std_err,
-#                                'slopes':slopes,
-#                                'intercepts':intercepts,
-#                                'PSPs_amp_start':PSPs_amp_start,
-#                                'PSPs_amp_ave':PSPs_amp_ave,
-#                                'PSPs_amp_end':PSPs_amp_end,
-#                                'length_of_experiment':length_of_experiment,
-#                                'uids_skipped':np.unique(uid_skip),
-#                                'f_pvalues':f_pvalues,
-#                                'max_residuals':max_residuals}
-        
-#     ju.write("PSP_vs_time_output_data/7_30_2018.json", dictionary)
-#     if not os.path.isdir("PSP_vs_time_output_data"):
-#         os.mkdir("PSP_vs_time_output_data")
-#     ju.write("PSP_vs_time_output_data/6_13_2017_human.json", dictionary)
-    
-
-#     plt.figure()
-#     for key in dictionary.keys():
-#         plt.errorbar(dictionary[key]['time_points'], dictionary[key]['time_avg_data'],  yerr=dictionary[key]['time_std_err'], label=key+', n='+str(dictionary[key]['num_of_synapses']))
-#     plt.title('average individual_first_baselines-line subtracted first pulse synaptic deflection')
-#     plt.legend(loc=4)
-#     plt.ylabel('voltage (V)')
-#     plt.xlabel('sec_since_t0 since first recorded synapse (s)')
-
-#     plt.figure()
-#     for key in dictionary.keys():
-#         plt.errorbar(dictionary[key]['sweeps'], dictionary[key]['sweep_avg_data'],  yerr=dictionary[key]['sweep_std_err'], label=key+', n='+str(dictionary[key]['num_of_synapses']))
-#     plt.title('average individual_first_baselines-line subtracted first pulse synaptic deflection')
-#     plt.legend(loc=4)
-#     plt.ylabel('voltage (V)')
-#     plt.xlabel('sweep number')    
-    
-    
-#     plt.show(block=False)
-
-# #        app.processEvents()    
-# #        pg.QtGui.QApplication.exec_()  
-    
-#     plt.show()
-        
-    
-  
-    
