@@ -529,6 +529,7 @@ if __name__ == '__main__':
         if not len(first_pulse_list)>0:
             continue
 
+        #this could be used to impliment Stephs curvy baseline qc
 #        first_pulse_list=remove_baseline_instabilities(non_qc_first_pulse_list)
  #       print('original_'+ str(len(non_qc_first_pulse_list))+'_reduced_'+ str(len(first_pulse_list))+' ,'+ str(len(non_qc_first_pulse_list)-len(first_pulse_list))+"pulses were removed for baseline")
 
