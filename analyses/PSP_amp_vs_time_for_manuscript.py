@@ -1,49 +1,29 @@
 """
-This is an updated version of PSP_amp_vs_time.py made to just 
-look at manuscript data. It has been reorganized to be more efficient.
-This file assumes that neurons are qc'd etc.  This also has updated 
-functions and utilizes the fitting for amplitudes.
+Creates data for the elife manuscript rundown analysis using single psp
+fitting but does calculate measured max for comparison.  Uses only
+data pre qc'd by Steph.  Data is saved to folder specified in __main__
+which should be specified for individual computers.  Data can be analyzed
+using the analyze_rundown.ipynb Jupyter notebook.  This code uses 
+the connection_summary not the database.
 """
 
 from __future__ import print_function, division
-
-from collections import OrderedDict
-
-import argparse
 import sys
 import os
 import pickle
-import pyqtgraph.multiprocess as mp
 import numpy as np
-import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 import pandas as pd
-
-from neuroanalysis.baseline import float_mode
 import datetime
-from multipatch_analysis.connection_detection import MultiPatchSyncRecAnalyzer, MultiPatchExperimentAnalyzer
-from multipatch_analysis.constants import INHIBITORY_CRE_TYPES
-from multipatch_analysis.constants import EXCITATORY_CRE_TYPES
-from multipatch_analysis.connection_detection import MultiPatchExperimentAnalyzer
-from multipatch_analysis.synaptic_dynamics import DynamicsAnalyzer
-from multipatch_analysis.experiment_list import cached_experiments
-from neuroanalysis.ui.plot_grid import PlotGrid
-from neuroanalysis.data import TraceList, PatchClampRecording
-from neuroanalysis.filter import bessel_filter
-from neuroanalysis.event_detection import exp_deconvolve
-import allensdk.core.json_utilities as ju
-relative_path=os.path.dirname(os.getcwd())
-sys.path.insert(1, os.path.join(relative_path))
 import scipy.stats as stats
-import pickle
 import statsmodels.api as sm
+from neuroanalysis.baseline import float_mode
+from multipatch_analysis.connection_detection import MultiPatchSyncRecAnalyzer, MultiPatchExperimentAnalyzer
+from multipatch_analysis.experiment_list import cached_experiments
+from neuroanalysis.data import TraceList, PatchClampRecording
 from neuroanalysis.fitting import fit_psp
 
-# mark to True if want to use pyqtgraph (conflicts with matplotlib) data
-use_qt_plot=False
-if use_qt_plot==True:
-    import pyqtgraph as pg
-
+# id's Steph qc'd for paper
 Stephs_data=np.array([
     [('unknown', 'unknown'),	('1501090950.86', 8, 1)],
     [('unknown', 'unknown'),	('1501101571.17', 1, 5)],
@@ -111,100 +91,31 @@ Stephs_data=np.array([
 
 Steph_uids=[l[1] for l in Stephs_data]
 
-def measure_amp(trace, baseline=(6e-3, 8e-3), response=(13e-3, 17e-3), plot=False):
-    '''This function is altered from PSP_amp_vs_time.py that was used to measure amplitude.
-    Returns the largest deflection during a response window from the baseline average to 
-    define psp amplitude. 
+def measure_amp_single(first_pulse_dict):
+    '''measures the max of a trace within a window of the predicted psp.
     
-    input
+    Input
     -----
-    trace: trace object
-    baseline: tuple with start and end time points (seconds) to define baseline
-    response: tuple with start and end time points (seconds) to define the region of the amplitude
+    first_pulse_dict: dictionary that must contain following items:
+        response: TraceView object
+            voltage waveform of the recorded psp
+        baseline: TraceView object
+            voltage waveform of the baseline region
+        pulse_ind: int
+            index of the pulse relative to the sweep (not the local TraceView)
+        rec_start: int
+            index of the start of the response TraceView in reference to the original sweep data 
     
     Returns
     -------
-    amp: the largest deflection (negative or positive)in the region of the psp
-    
+        relative_amp: float
+            measured amplitude relative to baseline
+        baseline: float
+            value of baseline
     '''
-    baseline = trace.time_slice(*baseline).data.mean()
-    max_first_peak_region = trace.time_slice(*response).data.max()
-    min_first_peak_region = trace.time_slice(*response).data.min()
-    bsub=np.array([max_first_peak_region-baseline, min_first_peak_region-baseline])
-    amp=bsub[np.where(abs(bsub)==max(abs(bsub)))[0][0]] #find the absolute maximum deflection from base_line
-
-    return amp
-
-def bin_data(the_list, data_list, bin_size=10):
-    '''bins sec_since_t0 series data in sec_since_t0 bins with a specified size.
-    Time must be bigger than 0.
-    inputs
-        the_list: list of arrays
-            each array contains the times during the recording
-        data_list: list of arrays
-            data corresponding to the_list
-        bin_size:
-            specifies the size of the sec_since_t0 bin
-    returns:
-        data_in_bins: list of numpy arrays
-            each array corresponds to a sec_since_t0 bin. Values in array are 
-            values in the sec_since_t0 bin
-        the_bins: list
-            values in list denote bin edges
-        middle_of_bins: list
-            values in list correspond to the center of sec_since_t0 bins     
-    '''
-    max_value=max([max(tt) for tt in the_list])
-    # make sure sec_since_t0 and bin_size make sense
-    if min([min(tt) for tt in the_list])<0: 
-        raise Exception('sec_since_t0 values should not be negative')
-    if max_value<bin_size:
-        raise Exception('bin size is bigger than max sec_since_t0')
-    
-    #specify the sec_since_t0 bins 
-    the_bins=np.arange(0, max_value+bin_size, bin_size) # this could potentially be broken depending on what the bin_size is
-    
-    if the_bins[-1] < max_value:
-        raise Exception('Your largest sec_since_t0 bin is less than max sec_since_t0.  Tweak your bin size.') 
-    
-    middle_of_bins=np.mean(np.array([np.append(the_bins, 0), np.append(0, the_bins)]), axis=0)[1:-1]  #sec_since_t0 bin is defined by middle of bin
-    data_in_bins=[np.array([]) for ii in range(len(middle_of_bins))] #initialize a data structure to receive data in bins
-    
-    #assign data to correct sec_since_t0 bins
-    for tt, ff in zip(the_list, data_list):
-        assert len(tt)==len(ff)
-        digits=np.digitize(tt, the_bins)-1 #note,digitize will assign values less than smallest timebin to a 0 index so -1 is used here
-        for ii in range(len(digits)-1):  #note I just added this -1 for the sweep indexing so not sure if it makes sense 
-#            print (ii, len(digits))
-#            print (data_in_bins[digits[ii]], ff[ii])
-            data_in_bins[digits[ii]]=np.append(data_in_bins[digits[ii]], ff[ii])
-
-    return data_in_bins, the_bins, middle_of_bins
-
-def test_bin_data():
-    '''meant to tests the bin_data() module but really just using a simple input so one can watch what is happening
-    '''
-    time_list=[np.array([1,2,3,4,5]), np.array([0, 3, 4.5]), np.array([1.1, 1.2, 2.3, 2.5, 2.8, 4, 4.3, 4.9])]
-    data_list=[np.array([1,2,3,4,5]), np.array([6,7,8]), np.array([9,10,11,12,13,14,15, 16])]
-    data, time_bins, time_mid_points=bin_data(time_list, data_list, bin_size=2.1)
-
-def average_via_bins(time_list, data_list, bin_size=10):
-    '''takes list of sec_since_t0 arrays and corresponding list of data arrays and returns the average
-    by placing the data in sec_since_t0 bins
-    '''
-    data,time_bins, time_bin_middle=bin_data(time_list, data_list, bin_size)
-    average_data=[]
-    std_err_data=[]
-    for bins in data:
-        average_data.append(np.mean(bins))
-        std_err_data.append(stats.sem(bins))
-    assert len(average_data)==len(time_bin_middle), "data length doesn't match sec_since_t0 length"
-    return time_bin_middle, average_data, std_err_data
-
-def measure_amp_single(first_pulse_dict):
     response_trace=first_pulse_dict['response'].copy(t0=0) #reset time traces so can use fixed xoffset from average fit
     dt = response_trace.dt
-    pulse_ind=first_pulse_dict['pulse_ind']-first_pulse_dict['rec_start'] #get pulse indicies 
+    pulse_ind=first_pulse_dict['pulse_ind']-first_pulse_dict['rec_start'] #get the indicies of the pulse in reference to the 'respons' waveform
 
     psp_region_start_ind=pulse_ind+int(3e-3/dt)
     psp_region_end_ind=pulse_ind+int(15e-3/dt)
@@ -216,7 +127,7 @@ def measure_amp_single(first_pulse_dict):
     min_first_peak_region = response_trace.data[psp_region_start_ind:psp_region_end_ind].min()
     # subtract the baseline value from min and max values
     bsub=np.array([max_first_peak_region-baseline, min_first_peak_region-baseline])
-    #find the absolute maximum deflection from base_line
+    # find the absolute maximum deflection from base_line
     relative_amp=bsub[np.where(abs(bsub)==max(abs(bsub)))[0][0]] 
     # if plot==True:
     #     plt.figure()
@@ -224,72 +135,10 @@ def measure_amp_single(first_pulse_dict):
     #     plt.show()
     return relative_amp, baseline
 
-# def trace_avg(response_list):
-# # doc string commented out to discourage code reuse given the change of values of t0
-# #    """
-# #    Parameters
-# #    ----------
-# #    response_list : list of neuroanalysis.data.TraceView objects
-# #        neuroanalysis.data.TraceView object contains waveform data. 
-# #        
-# #    Returns
-# #    -------
-# #    bsub_mean : neuroanalysis.data.Trace object
-# #        averages and baseline subtracts the ephys waveform data in the 
-# #        input response_list TraceView objects and replaces the .t0 value with 0. 
-# #    
-# #    """
-#     for trace in response_list: 
-#         trace.t0 = 0  #align traces for the use of TraceList().mean() funtion
-#     avg_trace = TraceList(response_list).mean() #returns the average of the wave form in a of a neuroanalysis.data.Trace object 
-#     bsub_mean = bsub(avg_trace) #returns a copy of avg_trace but replaces the ephys waveform in .data with the base_line subtracted wave_form
-    
-#     return bsub_mean
-
-# def get_amplitude(response_list):
-#     """
-#     FROM STEPHS FIRST PULSE CODE
-#     Parameters
-#     ----------
-#     response_list : list of neuroanalysis.data.TraceView objects
-#         neuroanalysis.data.TraceView object contains waveform data. 
-#     """
-    
-#     if len(response_list) == 1:
-#         bsub_mean = bsub(response_list[0])
-#     else:
-#         bsub_mean = trace_avg(response_list)
-#     dt = bsub_mean.dt
-#     neg = bsub_mean.data[int(13e-3/dt):].min()
-#     pos = bsub_mean.data[int(13e-3/dt):].max()
-#     avg_amp = neg if abs(neg) > abs(pos) else pos
-#     amp_sign = '-' if avg_amp < 0 else '+'
-#     peak_ind = list(bsub_mean.data).index(avg_amp)
-#     peak_t = bsub_mean.time_values[peak_ind]
-#     return bsub_mean, avg_amp, amp_sign, peak_t
-
-# def bsub(trace):
-#     """FROM STEPHS CODE.Returns a copy of the neuroanalysis.data.Trace object 
-#     where the ephys data waveform is replaced with a baseline 
-#     subtracted ephys data waveform.  
-    
-#     Parameters
-#     ----------
-#     trace : neuroanalysis.data.Trace object  
-        
-#     Returns
-#     -------
-#     bsub_trace : neuroanalysis.data.Trace object
-#        Ephys data waveform is replaced with a baseline subtracted ephys data waveform
-#     """
-#     data = trace.data # actual numpy array of time series ephys waveform
-#     dt = trace.dt # time step of the data
-#     base = float_mode(data[:int(10e-3 / dt)]) # baseline value for trace 
-#     bsub_trace = trace.copy(data=data - base) # new neuroanalysis.data.Trace object for baseline subtracted data
-#     return bsub_trace
 
 def remove_baseline_instabilities(pulse_list, baseline=2):
-    """
+    """This is a qc step that Steph uses. Note: not actually used in used in final rundown analysis
+    but could potentially be utilized.
     """
     for_std=[]
     for pulse in pulse_list:
@@ -309,32 +158,55 @@ def remove_baseline_instabilities(pulse_list, baseline=2):
     return stable_baseline
 
 class fit_first_pulse():
-    def __init__(self, expt, pre_syn_electrode_id, post_syn_electrode_id, pre_pad=10e-3, post_pad=50e-3):    
+    '''Group of functions for fitting psps of individual pulses.
+    '''
+    def __init__(self, expt, pre_syn_electrode_id, post_syn_electrode_id):    
         """
         Inputs
         ------
+        pre_syn_electrode_id: int
+            electrode id recording the pre synaptic cell
+        post_syn_electrode_id: 
+            electrode id recording the post synaptic cell
         pre_pad: float
-        Amount of time (s) before a spike to be included in the waveform.
+            amount of time (s) before a spike to be included in the waveform.
         post_pad: float 
-            Amount of time (s) after a spike to be included in the waveform.
+            amount of time (s) after a spike to be included in the waveform.
         """
 
         self.expt=expt
         self.pre_syn_electrode_id = pre_syn_electrode_id
         self.post_syn_electrode_id = post_syn_electrode_id
-        self.pre_pad = pre_pad
-        self.post_pad = post_pad
+        self.pre_pad = 10e-3
+        self.post_pad = 50e-3
 
     def get_spike_aligned_first_pulses(self):
         """Get all the first pulses that are recorded in current clamp
         and have a holding potential of between -65 and -75 and aligns 
-        them by spikes.
+        them at the spike times.
+        
         Returns
         -------
-        first_pulse_list
+        first_pulse_list: list of dictionaries containing information from  
+            MultiPatchSyncRecAnalyzer.get.get_spike_responses() including
+            the standard 'response' and 'baseline' TraceView Objects. The 
+            the additional items below are added to to output dictionary.
+                'sweep_id': int
+                    sweep number
+                'global_spike_date_time': datetime.datetime object
+                    real world time of a spike. i.e the spike happend on 
+                    Sept 1, 2017 at 12:34:63 pm. This is used to get the 
+                    amount of time between any spike and another event such
+                    as is done in 'global_seconds'
+                'holding_potential': float
+                    holding potential of post synaptic neuron 
+                'stim_type': float
+                    stimulus induction frequency in pre synaptic neuron
+                'global_seconds': float
+                    seconds past in reference to the first used spike in the experiment
         """
             
-        # loop though sweeps in recording and pull out the ones you want
+        # loop though sweeps in recording and pull out first pulses, in current clamp, with a holding potential between -75 mV and -65 mV
         first_pulse_list=[]
         command_trace_list=[]
         for sweep_rec in self.expt.data.contents:
@@ -365,7 +237,6 @@ class fit_first_pulse():
                             continue     
                         pulse['sweep_id']=sweep_id
                         pulse['global_spike_date_time']=pre_rec.start_time + datetime.timedelta(0, pulse['spike']['rise_index']*pulse['response'].dt)
-                        #pulse['stim_type']=str(pre_rec.stimulus).split('"')[1]
                         pulse['holding_potential']=post_rec.holding_potential
                         pulse['stim_type']=analyzer.stim_params(pre_rec)[0]
                         first_pulse_list.append(pulse)
@@ -378,14 +249,22 @@ class fit_first_pulse():
         return first_pulse_list
 
 
-
     def get_baseline_sub_average(self, first_pulse_list):
         """Substract the baseline for each individual fit and then
-        take the average.
+        take the average.  
         
-        input
+        Input
         -----
-        first_pulse_list
+        first_pulse_list: list of dictionaries containing information from  
+            MultiPatchSyncRecAnalyzer.get.get_spike_responses() calculated
+            via fit_first_pulse.get_spike_aligned_first_pulses().  Relevant 
+            items for this function are
+            'response': TraceView object
+                post synaptic voltage waveform
+            'baseline': TraceView object
+                post synaptic baseline waveform
+            'command': TraceView object
+                current injected into the pre synaptic neuron
         """        
         bsub_trace_list=[]
         command_trace_list=[]
@@ -402,7 +281,16 @@ class fit_first_pulse():
         return self.avg_voltage, self.avg_dt, self.avg_command 
 
     def fit_avg(self):
-        #fit the average base_line subtracted data
+        """fit the average base_line subtracted data. Updates self with the average psp fit.
+        
+        Returns
+        -------
+        self.ave_psp_fit: lmfit.model.ModelResult
+            fit of the average psp waveform
+        weight: numpy.ndarray
+            the weight assigned to each index of the input waveform for fitting
+        """
+        #weighting
         weight = np.ones(len(self.avg_voltage.data))*10.  #set everything to ten initially
         weight[int((self.pre_pad-3e-3)/self.avg_dt):int(self.pre_pad/self.avg_dt)] = 0.   #area around stim artifact note that since this is spike aligned there will be some blur in where the cross talk is
         weight[int((self.pre_pad+1e-3)/self.avg_dt):int((self.pre_pad+5e-3)/self.avg_dt)] = 30.  #area around steep PSP rise 
@@ -415,10 +303,25 @@ class fit_first_pulse():
         return self.ave_psp_fit, weight
 
     def fit_single(self, first_pulse_dict):
+        """Fit single psp using the average fit to contrain boundries.
+
+        Input
+        -----
+        first_pulse_list: list of dictionaries containing information from  
+            MultiPatchSyncRecAnalyzer.get.get_spike_responses() calculated
+            via fit_first_pulse.get_spike_aligned_first_pulses().  Relevant 
+            items for this function are:
+            'response': TraceView 
+                voltage response waveform (subset of sweep TraceView)
+            'pulse_ind': int
+                index of the pulse relative to the sweep (not the local TraceView)
+            'rec_start': int
+                index of the start of the response TraceView in reference to the original sweep data 
+        """
         response_trace=first_pulse_dict['response'].copy(t0=0) #reset time traces so can use fixed xoffset from average fit
 #            # weight parts of the trace during fitting
         dt = response_trace.dt
-        pulse_ind=first_pulse_dict['pulse_ind']-first_pulse_dict['rec_start'] #get pulse indicies 
+        pulse_ind=first_pulse_dict['pulse_ind']-first_pulse_dict['rec_start'] #get the indicies of the pulse in reference to the 'respons' waveform
         weight = np.ones(len(response_trace.data))*10.  #set everything to ten initially
         weight[pulse_ind:pulse_ind+int(3e-3/dt)] = 0.   #area around stim artifact
         weight[pulse_ind+int(3e-3/dt):pulse_ind+int(15e-3/dt)] = 30.  #area around steep PSP rise 
@@ -440,10 +343,11 @@ class fit_first_pulse():
     def plot_fit(self, fit, voltage, command, weight, title, 
                 measured_baseline=0,
                 measured_amp=False,
-                fit_amp=False,
                 nrmse=False,
                 show_plot=False,
                 save_name=False):
+        """plots the fit
+        """
 
         # plot average fit
         plt.figure(figsize=(14,14))
@@ -475,7 +379,7 @@ class fit_first_pulse():
         ax1.legend(lines_plot_2, label_plot_2)
         if measured_amp:
             ax1.plot(voltage.time_values*1.e3, np.ones(len(voltage.time_values))*measured_amp*1.e3, 'r--')
-            plt.title(title + ' nrmse=%.3g, fit amp:%.3g, measured amp:%3g' % (nrmse, fit_amp*1.e3, measured_amp*1.e3))
+            plt.title(title + ' nrmse=%.3g, fit amp:%.3g, measured amp:%3g' % (nrmse, fit.best_values['amp']*1.e3, measured_amp*1.e3))
         else:
             plt.title(title + ' nrmse=%.3g, fit amp:%.3g' % (fit.nrmse(), fit.best_values['amp']*1e3))
 
@@ -491,10 +395,7 @@ class fit_first_pulse():
 
 if __name__ == '__main__':
 
-    if use_qt_plot == True:
-        app = pg.mkQApp()
-        pg.dbg()
-
+    # note this path must be specified for individual users
     path='/home/corinnet/workspace/aiephys/rundown_results'
     if not os.path.exists(path):
         os.makedirs(path)
@@ -507,7 +408,6 @@ if __name__ == '__main__':
     for connection in expts.connection_summary(): # expts.connection_summary() is list of dictionaries
         cells = connection['cells'] #(pre, post) synaptic "Cell" objects
         expt = connection['expt'] #"Experiment" object
-#            print (expt.uid) #unique id for experiment
         pre_syn_cell_id=cells[0].cell_id
         post_syn_cell_id=cells[1].cell_id
         pre_syn_electrode_id=cells[0].electrode.device_id
@@ -515,7 +415,6 @@ if __name__ == '__main__':
 
         # skip connection if not in Stephs set 
         if (expt.uid, pre_syn_cell_id, post_syn_cell_id) not in Steph_uids:
-#        if expt.uid!='1487367784.96' or pre_syn_cell_id!=6 or post_syn_cell_id!=2:
             continue
         else:
             print ("RUNNING: %s, cell ids:%s %s, electrode ids: %s %s" % (expt.uid, pre_syn_cell_id, post_syn_cell_id, pre_syn_electrode_id, post_syn_electrode_id))
@@ -529,7 +428,7 @@ if __name__ == '__main__':
         if not len(first_pulse_list)>0:
             continue
 
-        #this could be used to impliment Stephs curvy baseline qc
+        #this could be used to impliment Stephs curvy baseline qc.  eed to rename output above to match input here.
 #        first_pulse_list=remove_baseline_instabilities(non_qc_first_pulse_list)
  #       print('original_'+ str(len(non_qc_first_pulse_list))+'_reduced_'+ str(len(first_pulse_list))+' ,'+ str(len(non_qc_first_pulse_list)-len(first_pulse_list))+"pulses were removed for baseline")
 
@@ -545,7 +444,9 @@ if __name__ == '__main__':
             os.makedirs(connection_path)
 
         # fit the average of the first pulses
-        fitting.plot_fit(ave_psp_fit, avg_voltage, avg_command, 
+        fitting.plot_fit(ave_psp_fit, 
+                        avg_voltage, 
+                        avg_command, 
                         weight_for_average, 
                         'Mean baseline subtracted spike aligned,', 
                         save_name=os.path.join(connection_path, 'AVG_'+name_string+'.png'))
@@ -564,7 +465,6 @@ if __name__ == '__main__':
                             first_pulse_dict['command'], 
                             weight_for_single, 
                             'SWEEP:'+str(first_pulse_dict['sweep_id'])+', ', 
-                            fit_amp=single_psp_fit.best_values['amp'],
                             nrmse=single_psp_fit.nrmse(),
                             measured_baseline=baseline_value, 
                             measured_amp=measured_amp,
@@ -586,7 +486,10 @@ if __name__ == '__main__':
                             first_pulse_dict['stim_type'],
                             first_pulse_dict['global_spike_date_time']]) 
     
+        # create a pandas dataframe
         out_df=pd.DataFrame(out_data)
+        
+        # name the columns of the dataframe
         out_df.columns=['uid',
                         'pre_cell_id',
                         'post_cell_id', 
@@ -601,6 +504,7 @@ if __name__ == '__main__':
                         'post_cre', 
                         'stim_type',
                         'global_spike_date_time']
+        # save dataframe to a csv                
         out_df.to_csv(os.path.join(connection_path,'rundown.csv')) 
 
             
