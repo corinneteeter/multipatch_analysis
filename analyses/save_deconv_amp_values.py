@@ -1,3 +1,5 @@
+# Extracting and saving deconvolved amplitudes from database for easy remote use.
+
 from neuroanalysis.data import Trace, TraceList
 from multipatch_analysis.database import database as db
 import multipatch_analysis.connection_strength as cs 
@@ -65,7 +67,7 @@ def event_qc(events, criterion):
     mask &= np.abs(events['baseline_current']) < 500e-12
     return mask 
 
-def get_first_pulse_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False):
+def get_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False):
     session = db.Session()
     #note requerying the pair because the Session was going lazy
     expt = db.experiment_from_timestamp(uid, session=session)
@@ -74,6 +76,8 @@ def get_first_pulse_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=Fal
     # 1. Get a list of all presynaptic spike times and the amplitudes of postsynaptic responses    
     clamp_mode='ic'
     raw_events = cs.get_amps(session, pair, clamp_mode=clamp_mode, get_data=get_data)
+    
+    # qc filter responses
     if ((pair.connection_strength.synapse_type == 'in') & (clamp_mode == 'ic')) or ((pair.connection_strength.synapse_type == 'ex') & (clamp_mode == 'vc')):
         amplitude_field = 'neg_dec_amp'
         criterion='in_qc_pass'
@@ -83,41 +87,48 @@ def get_first_pulse_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=Fal
     else:
         raise Exception('huh?')
     pass_qc_mask = event_qc(raw_events, criterion)
-    events = raw_events[pass_qc_mask]
+    passing_events = raw_events[pass_qc_mask]
+
+    # jump out of loop if there is there are no events that passed qc
+    print("TRYING: %0.3f, cell ids:%s %s" % (uid, pre_cell_id, post_cell_id))
+    if len(passing_events) == 0:
+        print ("\tno qc passing events: %0.3f, cell ids:%s %s" % (uid, pre_cell_id, post_cell_id))
+        session.close()
+        return None, None, None, None
+
+    # jump out of loop if the there is no connection strength
     if pair.connection_strength is None:
         print ("\t\tSKIPPING: pair_id %s, uid %s, is not yielding pair.connection_strength" % (pair.id, uid))
-        return None, None, None
-    print("TRYING: %0.3f, cell ids:%s %s" % (uid, pre_cell_id, post_cell_id))
-    if len(events)==0:
-        print ("\tno events: %0.3f, cell ids:%s %s" % (uid, pre_cell_id, post_cell_id))
-        session.close()
-        return None, None, None
+        return None, None, None, None
     
-    rec_times = 1e-9 * (events['rec_start_time'].astype(float) - float(events['rec_start_time'][0]))
-    spike_times = events['max_dvdt_time'] + rec_times
-
-    # 2. Initialize model parameters:
-    #    - release model with depression, facilitation
-    #    - number of synapses, distribution of per-vesicle amplitudes estimated from first pulse CV
-    #    - measured distribution of background noise
-    #    - parameter space to be searched
+    # get the background values
     raw_bg_events = cs.get_baseline_amps(session, pair, clamp_mode='ic')
     bg_qc_mask = event_qc(raw_bg_events, criterion)
     bg_events = raw_bg_events[bg_qc_mask]
     mean_bg_amp = bg_events[amplitude_field].mean()
-    amplitudes = events[amplitude_field] - mean_bg_amp
-    pulse_ids = events['id']
 
-    first_pulse_mask = events['pulse_number'] == 1
-    first_pulse_amps = amplitudes[first_pulse_mask]
-    first_pulse_times = rec_times[first_pulse_mask]
-    first_pulse_ids = pulse_ids[first_pulse_mask]
+    # get spike times and amplitudes
+    # I believe the following must be putting the events in reference to the start of the experiment. 
+    # the 1e-9 is present because the time stamp is turned into nanoseconds
+    rec_times = 1e-9 * (passing_events['rec_start_time'].astype(float) - float(passing_events['rec_start_time'][0]))
+    #stim_spike table says 'max_dvdt_time' it is relative to beginning of recording.  Is the recording a sweep (train)?
+    spike_times_relative_to_experiment = passing_events['max_dvdt_time'] + rec_times
+    amplitudes = passing_events[amplitude_field] - mean_bg_amp
+    pulse_ids = passing_events['id']
+    pulse_numbers = passing_events['pulse_number']
+
+    #Example of screening for first pulse
+    # first_pulse_mask = passing_events['pulse_number'] == 1
+    # first_pulse_amps = amplitudes[first_pulse_mask]
+    # first_pulse_times = rec_times[first_pulse_mask]
+    # first_pulse_ids = pulse_ids[first_pulse_mask]
+
     if get_data==True:
-        data = events['data'][first_pulse_mask]
+        data = passing_events['data']
         session.close()
-        return first_pulse_times, first_pulse_amps, first_pulse_ids, data
+        return spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers, data
     else:
-        return first_pulse_times, first_pulse_amps, first_pulse_ids
+        return spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers
 
 def plot_expt_dec_amp_dist(uid, pre=None, post=None, show_plot=False, block_plot=True):
     # get all pair recordings in experiment
@@ -127,17 +138,17 @@ def plot_expt_dec_amp_dist(uid, pre=None, post=None, show_plot=False, block_plot
     n=0
     xlabels=[]
     for (p, uid, pre_cell_id, post_cell_id, pre_cell_cre, post_cell_cre) in expt_stuff:
-        first_pulse_times, first_pulse_amps, pulse_ids=get_first_pulse_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False)
-        if (np.any(first_pulse_times)==None) or (np.any(first_pulse_amps)==None):
+        spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers = get_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False)
+        if (np.any(spike_times_relative_to_experiment)==None) or (np.any(amplitudes)==None):
             continue
         if ((pre_cell_id == pre) & (post_cell_id == post)):
-            plt.plot(n*np.ones(len(first_pulse_amps)), first_pulse_amps*1e3, '.', ms=20)
+            plt.plot(n*np.ones(len(amplitudes)), amplitudes*1e3, '.', ms=20)
         else:
-            plt.plot(n*np.ones(len(first_pulse_amps)), first_pulse_amps*1e3, '.', ms=10)
+            plt.plot(n*np.ones(len(amplitudes)), amplitudes*1e3, '.', ms=10)
         xlabels.append('%s %i, %s %i' %(pre_cell_cre, pre_cell_id, post_cell_cre, post_cell_id))
         n=n+1
-    plt.ylabel('mV')
-    plt.title('First Pulse Deconvolution Amplitude\n%.3f' % uid)
+    plt.ylabel('Deconvolution Arbitrary Units')
+    plt.title('Deconvolution Amplitude\n%.3f' % uid)
     plt.xticks(range(0,n), xlabels, rotation=90)
     plt.tight_layout()
     if show_plot==True:
@@ -211,30 +222,31 @@ pv = [(1533244490.755, 6, 4),
 
 for uid, pre, post in pv:
     plt.figure(figsize=(15,10))
-    plt.subplot(221)
-    #wrapper around get_first_pulse_deconvolved_amp that plots the deconvolved amplitude distributions for the experiment
+    plt.subplot(211)
+    # #wrapper around get_deconvolved_amp that plots the deconvolved amplitude distributions for the experiment
     plot_expt_dec_amp_dist(uid, pre=pre, post=post, show_plot=False, block_plot=False)  
-    first_pulse_times, first_pulse_amps, pulse_ids, data=get_first_pulse_deconvolved_amp(uid, pre, post, get_data=True)
-    plt.subplot(222)
-    plt.plot(first_pulse_times, first_pulse_amps*1e3, '.', ms=20)
-    for ii, (p,t,a) in enumerate(zip(pulse_ids, first_pulse_times, first_pulse_amps*1e3)):
-        plt.annotate(str(ii), xy=(t,a), textcoords='data')
-    plt.ylabel('mV')
+    spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers, data = get_deconvolved_amp(uid, pre, post, get_data=True)
+    plt.subplot(212)
+    sample=range(0,len(amplitudes))
+    plt.plot(spike_times_relative_to_experiment[sample], amplitudes[sample]*1e3, '.-', ms=20)
+    # for ii, (p,t,a) in enumerate(zip(pulse_ids[sample], spike_times_relative_to_experiment[sample], amplitudes[sample]*1e3)):
+    #     plt.annotate(str(ii), xy=(t,a), textcoords='data')
+    plt.ylabel('Deconvolution Arbitrary Units')
     plt.xlabel('time (unknown units)')
-    plt.title('First Pulse Deconvolution Amplitude\n%.3f, pre %i, post %i' %(uid, pre, post))
+    plt.title('Deconvolution Amplitude\n%.3f, pre %i, post %i' %(uid, pre, post))
     
     #extract pulse wave forms
-#    pulse_waveforms=get_pulse_waveforms(uid, pre, post, pulse_ids)  
-    plt.subplot(2,1,2)
-    for ii, v_trace in enumerate(data):
-        time=np.arange(0, len(v_trace)/20000., 1./20000 )
-        l=plt.plot(time, v_trace)
-        c=l[0].get_color()
-        r=random.randint(0,len(time)-1)
-        plt.annotate(str(ii), xy=(time[r], v_trace[r]), textcoords='data', color=c)
+# #    pulse_waveforms=get_pulse_waveforms(uid, pre, post, pulse_ids)  
+#     plt.subplot(2,1,2)
+#     for ii, v_trace in enumerate(data):
+#         time=np.arange(0, len(v_trace)/20000., 1./20000 )
+#         l=plt.plot(time, v_trace)
+#         c=l[0].get_color()
+#         r=random.randint(0,len(time)-1)
+#         plt.annotate(str(ii), xy=(time[r], v_trace[r]), textcoords='data', color=c)
 
 
-    plt.plot()
+#     plt.plot()
     plt.tight_layout()
     plt.show()
 #    plt.savefig('/home/corinnet/workspace/aiephys/decon_images/%0.3f_pre%i_post%i.png' %(uid, pre, post))
