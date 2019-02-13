@@ -15,16 +15,16 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import random
 
-def query_specific_experiment(expt_id, pre_cell=None, post_cell=None):
+def query_specific_experiment(expt_id, pre_cell_ext_id=None, post_cell_ext_id=None):
     """Query and experiment id.
     
     Inputs
     ------
     expt_id: float (3 decimal positions)
         id of the experiment, corresponds to the db.Experiment.acq_timestamp
-    pre_cell: int
+    pre_cell_ext_id: int
         identifies the pre synaptic cell, if pre_cell is None, finds all pre synaptic cells in experiment
-    post_cell: int
+    post_cell_ext_id: int
         identifies the post synaptic cell, if post_cell is None, finds all post synaptic cells in experiment
 
     Returns
@@ -50,10 +50,19 @@ def query_specific_experiment(expt_id, pre_cell=None, post_cell=None):
     session = db.Session() #create session
     pre_cell = db.aliased(db.Cell)
     post_cell = db.aliased(db.Cell)
-    expt_stuff = session.query(db.Pair, db.Experiment.acq_timestamp, pre_cell.ext_id, post_cell.ext_id,pre_cell.cre_type, post_cell.cre_type)\
+    if pre_cell_ext_id and post_cell_ext_id:
+        expt_stuff = session.query(db.Pair, db.Experiment.acq_timestamp, pre_cell.ext_id, post_cell.ext_id, pre_cell.cre_type, post_cell.cre_type)\
+                        .join(db.Experiment)\
+                        .join(pre_cell, db.Pair.pre_cell_id==pre_cell.id)\
+                        .join(post_cell, db.Pair.post_cell_id==post_cell.id).filter(db.Experiment.acq_timestamp == expt_id)\
+                                                                            .filter(pre_cell.ext_id == pre_cell_ext_id)\
+                                                                            .filter(post_cell.ext_id == post_cell_ext_id).all()
+    else:
+        expt_stuff = session.query(db.Pair, db.Experiment.acq_timestamp, pre_cell.ext_id, post_cell.ext_id, pre_cell.cre_type, post_cell.cre_type)\
                         .join(db.Experiment)\
                         .join(pre_cell, db.Pair.pre_cell_id==pre_cell.id)\
                         .join(post_cell, db.Pair.post_cell_id==post_cell.id).filter(db.Experiment.acq_timestamp==expt_id).all()
+
     # make sure query returned something
     if len(expt_stuff) <=0:
         print('No pairs found for expt_id=%f', expt_id)
@@ -220,22 +229,43 @@ pv = [(1533244490.755, 6, 4),
     (1539801888.714, 7, 1)]
 
 
+import pandas
+d={'uid':[],
+   'pre_id': [],
+   'post_id':[],
+   'pre_cre':[],
+   'post_cre':[],
+   'spike_times_relative_to_experiment':[],
+   'amplitudes':[],
+   'pulse_ids':[]}
+
 for uid, pre, post in pv:
-    plt.figure(figsize=(15,10))
-    plt.subplot(211)
-    # #wrapper around get_deconvolved_amp that plots the deconvolved amplitude distributions for the experiment
-    plot_expt_dec_amp_dist(uid, pre=pre, post=post, show_plot=False, block_plot=False)  
-    spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers, data = get_deconvolved_amp(uid, pre, post, get_data=True)
-    plt.subplot(212)
-    sample=range(0,len(amplitudes))
-    plt.plot(spike_times_relative_to_experiment[sample], amplitudes[sample]*1e3, '.-', ms=20)
-    # for ii, (p,t,a) in enumerate(zip(pulse_ids[sample], spike_times_relative_to_experiment[sample], amplitudes[sample]*1e3)):
-    #     plt.annotate(str(ii), xy=(t,a), textcoords='data')
-    plt.ylabel('Deconvolution Arbitrary Units')
-    plt.xlabel('time (unknown units)')
-    plt.title('Deconvolution Amplitude\n%.3f, pre %i, post %i' %(uid, pre, post))
+    expt_stuff= query_specific_experiment(uid, pre_cell_ext_id=pre, post_cell_ext_id=post)
+    if len(expt_stuff) > 1:
+        raise Exception('There should only be a list of 1 experiment returned')
+    # spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers, data = get_deconvolved_amp(uid, pre, post, get_data=True)
+    spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers = get_deconvolved_amp(uid, pre, post, get_data=False)
+    d['uid'].append(uid)
+    d['pre_id'].append(pre)
+    d['post_id'].append(post)
+    d['pre_cre'].append(expt_stuff[0][4])
+    d['post_cre'].append(expt_stuff[0][5])
+    d['spike_times_relative_to_experiment'].append(spike_times_relative_to_experiment)
+    d['amplitudes'].append(amplitudes)
+    d['pulse_ids'].append(pulse_ids)
+
     
-    #extract pulse wave forms
+#    plt.figure(figsize=(15,10))
+#    sample=range(0,len(amplitudes))
+#    plt.plot(spike_times_relative_to_experiment[sample], amplitudes[sample]*1e3, '.-', ms=20)
+#    # for ii, (p,t,a) in enumerate(zip(pulse_ids[sample], spike_times_relative_to_experiment[sample], amplitudes[sample]*1e3)):
+#    #     plt.annotate(str(ii), xy=(t,a), textcoords='data')
+#    plt.ylabel('Deconvolution Arbitrary Units')
+#    plt.xlabel('time (unknown units)')
+#    plt.title('Deconvolution Amplitude\n%.3f, pre %i, post %i' %(uid, pre, post))
+
+    
+    #extract pulse wave forms if you want to plot them
 # #    pulse_waveforms=get_pulse_waveforms(uid, pre, post, pulse_ids)  
 #     plt.subplot(2,1,2)
 #     for ii, v_trace in enumerate(data):
@@ -246,10 +276,9 @@ for uid, pre, post in pv:
 #         plt.annotate(str(ii), xy=(time[r], v_trace[r]), textcoords='data', color=c)
 
 
-#     plt.plot()
-    plt.tight_layout()
-    plt.show()
+#    plt.tight_layout()
+#    plt.show()
 #    plt.savefig('/home/corinnet/workspace/aiephys/decon_images/%0.3f_pre%i_post%i.png' %(uid, pre, post))
-    plt.close()
+#    plt.close()
  
 
