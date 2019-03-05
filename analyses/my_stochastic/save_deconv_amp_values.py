@@ -76,7 +76,8 @@ def event_qc(events, criterion):
     mask &= np.abs(events['baseline_current']) < 500e-12
     return mask 
 
-def get_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False):
+def get_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False, get_only_qc_pass=True):
+    get_qc_pass=True
     session = db.Session()
     #note requerying the pair because the Session was going lazy
     expt = db.experiment_from_timestamp(uid, session=session)
@@ -94,21 +95,25 @@ def get_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False):
         amplitude_field = 'pos_dec_amp'
         criterion='ex_qc_pass'
     else:
-        raise Exception('huh?')
+        raise Exception("the qc filter doesnt make sense?")
     pass_qc_mask = event_qc(raw_events, criterion)
-    passing_events = raw_events[pass_qc_mask]
-
+    if get_only_qc_pass:
+        included_events = raw_events[pass_qc_mask]
+        pass_qc_out = pass_qc_mask[pass_qc_mask] 
+    else:
+        included_events = raw_events
+        pass_qc_out = pass_qc_mask
     # jump out of loop if there is there are no events that passed qc
     print("TRYING: %0.3f, cell ids:%s %s" % (uid, pre_cell_id, post_cell_id))
-    if len(passing_events) == 0:
+    if len(included_events) == 0:
         print ("\tno qc passing events: %0.3f, cell ids:%s %s" % (uid, pre_cell_id, post_cell_id))
         session.close()
-        return None, None, None, None
+        return None, None, None, None, None
 
     # jump out of loop if the there is no connection strength
     if pair.connection_strength is None:
         print ("\t\tSKIPPING: pair_id %s, uid %s, is not yielding pair.connection_strength" % (pair.id, uid))
-        return None, None, None, None
+        return None, None, None, None, None
     
     # get the background values
     raw_bg_events = cs.get_baseline_amps(session, pair, clamp_mode='ic')
@@ -119,25 +124,25 @@ def get_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False):
     # get spike times and amplitudes
     # I believe the following must be putting the events in reference to the start of the experiment. 
     # the 1e-9 is present because the time stamp is turned into nanoseconds
-    rec_times = 1e-9 * (passing_events['rec_start_time'].astype(float) - float(passing_events['rec_start_time'][0]))
+    rec_times = 1e-9 * (included_events['rec_start_time'].astype(float) - float(included_events['rec_start_time'][0]))
     #stim_spike table says 'max_dvdt_time' it is relative to beginning of recording.  Is the recording a sweep (train)?
-    spike_times_relative_to_experiment = passing_events['max_dvdt_time'] + rec_times
-    amplitudes = passing_events[amplitude_field] - mean_bg_amp
-    pulse_ids = passing_events['id']
-    pulse_numbers = passing_events['pulse_number']
+    spike_times_relative_to_experiment = included_events['max_dvdt_time'] + rec_times
+    amplitudes = included_events[amplitude_field] - mean_bg_amp
+    pulse_ids = included_events['id']
+    pulse_numbers = included_events['pulse_number']
 
     #Example of screening for first pulse
-    # first_pulse_mask = passing_events['pulse_number'] == 1
+    # first_pulse_mask = included_events['pulse_number'] == 1
     # first_pulse_amps = amplitudes[first_pulse_mask]
     # first_pulse_times = rec_times[first_pulse_mask]
     # first_pulse_ids = pulse_ids[first_pulse_mask]
 
     if get_data==True:
-        data = passing_events['data']
+        data = included_events['data']
         session.close()
-        return spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers, data
+        return spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers, pass_qc_out,  data
     else:
-        return spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers
+        return spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers, pass_qc_out
 
 def plot_expt_dec_amp_dist(uid, pre=None, post=None, show_plot=False, block_plot=True):
     # get all pair recordings in experiment
@@ -147,7 +152,7 @@ def plot_expt_dec_amp_dist(uid, pre=None, post=None, show_plot=False, block_plot
     n=0
     xlabels=[]
     for (p, uid, pre_cell_id, post_cell_id, pre_cell_cre, post_cell_cre) in expt_stuff:
-        spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers = get_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False)
+        spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers, pass_qc = get_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False)
         if (np.any(spike_times_relative_to_experiment)==None) or (np.any(amplitudes)==None):
             continue
         if ((pre_cell_id == pre) & (post_cell_id == post)):
@@ -171,8 +176,10 @@ def plot_expt_dec_amp_dist(uid, pre=None, post=None, show_plot=False, block_plot
 # session = db.Session() #create session
 # experiments = session.query(db.Experiment.acq_timestamp).all()
 
-#--- Some good PV examples
-pv = [(1533244490.755, 6, 4),
+#--- Some good PV examples.  These are excellent fits
+connections = [
+    #pv to pv
+    (1533244490.755, 6, 4),
     (1530559621.966, 7, 6),
     (1527020350.517, 6, 7),
     (1525903868.115, 6, 5),
@@ -226,10 +233,38 @@ pv = [(1533244490.755, 6, 4),
     (1490043541.218, 7, 6),
     (1484952266.115, 8, 4),
     (1539801888.714, 1, 8),
-    (1539801888.714, 7, 1)]
+    (1539801888.714, 7, 1),
+    # tlx 3 to sst
+    (1486504558.948, 3, 5),
+    (1486511976.478, 7, 2),
+    (1490218204.397, 8, 5),
+    (1490304528.810, 8, 7),
+    (1490304528.810, 5, 7),
+    (1490819652.306, 6, 5),
+    (1492030010.631, 6, 2),
+    (1492204582.392, 2, 7),
+    (1492036074.933, 7, 5),
+    (1492212394.505, 5, 4),
+    (1492212394.505, 3, 4),
+    (1496356414.741, 3, 6),
+    (1496356414.741, 3, 4),
+    (1497653267.742, 3, 4),
+    (1498258681.855, 3, 1),
+    (1499898590.696, 2, 8),
+    (1499898590.696, 1, 8),
+    (1508362350.796, 6, 3),
+    (1513809172.285, 3, 1),
+    (1526677592.224, 5, 4),
+    (1502914763.893, 2, 8),
+    (1504300627.314, 4, 8),
+    (1504300627.314, 2, 8),
+    (1498255210.715, 1, 5),
+    (1522789170.885, 8, 5),
+    (1535145422.740, 4, 6),
+    (1535150219.310, 5, 3)]
 
 
-import pandas
+import pandas as pd
 d={'uid':[],
    'pre_id': [],
    'post_id':[],
@@ -237,14 +272,15 @@ d={'uid':[],
    'post_cre':[],
    'spike_times_relative_to_experiment':[],
    'amplitudes':[],
-   'pulse_ids':[]}
+   'pulse_ids':[],
+   'pass_qc':[]}
 
-for uid, pre, post in pv:
+for uid, pre, post in connections:
     expt_stuff= query_specific_experiment(uid, pre_cell_ext_id=pre, post_cell_ext_id=post)
     if len(expt_stuff) > 1:
         raise Exception('There should only be a list of 1 experiment returned')
-    # spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers, data = get_deconvolved_amp(uid, pre, post, get_data=True)
-    spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers = get_deconvolved_amp(uid, pre, post, get_data=False)
+    # spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers, pass_qc, data = get_deconvolved_amp(uid, pre, post, get_data=True)
+    spike_times_relative_to_experiment, amplitudes, pulse_ids, pulse_numbers, pass_qc = get_deconvolved_amp(uid, pre, post, get_data=False, get_only_qc_pass=False)
     d['uid'].append(uid)
     d['pre_id'].append(pre)
     d['post_id'].append(post)
@@ -253,6 +289,10 @@ for uid, pre, post in pv:
     d['spike_times_relative_to_experiment'].append(spike_times_relative_to_experiment)
     d['amplitudes'].append(amplitudes)
     d['pulse_ids'].append(pulse_ids)
+    d['pass_qc'].append(pass_qc)
+
+data=pd.DataFrame.from_dict(d)
+data.to_csv('pv_tlx_to_sst.csv')
 
     
 #    plt.figure(figsize=(15,10))
