@@ -216,10 +216,18 @@ def get_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False, get_only
     # first_pulse_times = rec_times[first_pulse_mask]
     # first_pulse_ids = pulse_ids[first_pulse_mask]
 
+    # make sure all the arrays are the same length
+    if (len(spike_times_relative_to_experiment) != len(amplitudes)) | \
+        (len(amplitudes) != len(included_events['id'])) | \
+        (len(amplitudes) != len(included_events['pulse_number'])) | \
+        (len(amplitudes) != len(included_events['post_rec_id'])) | \
+        (len(amplitudes) != len(included_events['stim_freq'])):
+        raise Exception('arrays are a different length')
+
     out_dict={'spike_times_relative_to_experiment': spike_times_relative_to_experiment,
-              'deconvolved_amplitudes': amplitudes,
+              'deconvolved_amps': amplitudes,
               'pulse_database_ids': included_events['id'],
-              'pulse_number_in_train': included_events['pulse_number'],
+              'pulse_num_within_train': included_events['pulse_number'],
               'post_syn_rec_id': included_events['post_rec_id'], 
               'only_qc_pass_returned': get_only_qc_pass,
               'stim_freq': included_events['stim_freq']}
@@ -227,15 +235,18 @@ def get_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False, get_only
               #make sure these are all coded appropriately
     if get_data:
         out_dict['data_traces'] = included_events['data']
+        if len(amplitudes) != len(out_dict['data_traces']):
+            raise Exception('arrays are a different length')
         session.close()
     else:
         out_dict['data_traces'] = None
 
     if get_only_qc_pass is False:
         out_dict['qc_mask'] = pass_qc_out
+        if len(amplitudes) != len(out_dict['qc_mask']):
+            raise Exception('arrays are a different length')
     else:
         out_dict['qc_mask'] = None
-
     return out_dict
 
 def plot_expt_dec_amp_dist(uid, pre=None, post=None, show_plot=False, block_plot=True):
@@ -249,9 +260,9 @@ def plot_expt_dec_amp_dist(uid, pre=None, post=None, show_plot=False, block_plot
 
         deconvolved = get_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False)
         spike_times_relative_to_experiment = deconvolved['spike_times_relative_to_experiment'] 
-        amplitudes = deconvolved['deconvolved_amplitudes']
+        amplitudes = deconvolved['deconvolved_amps']
         pulse_ids = deconvolved['pulse_database_ids']
-        pulse_numbers = deconvolved['pulse_number_in_train']
+        pulse_numbers = deconvolved['pulse_num_within_train']
         pass_qc = deconvolved['qc_mask']
         if deconvolved is None:
             continue
@@ -280,88 +291,88 @@ def plot_expt_dec_amp_dist(uid, pre=None, post=None, show_plot=False, block_plot
 connections = [
     #pv to pv
     (1533244490.755, 6, 4),
-    (1530559621.966, 7, 6)]
-    # (1527020350.517, 6, 7),
-    # (1525903868.115, 6, 5),
-    # (1525903868.115, 7, 6),
-    # (1525812130.134, 7, 6),
-    # (1523398687.484, 2, 1),
-    # (1523398687.484, 2, 3),
-    # (1523398687.484, 3, 2),
-    # (1521667891.153, 3, 4),
-    # (1519425770.224, 6, 7),
-    # (1519425770.224, 7, 2),
-    # (1518564082.242, 4, 6),
-    # (1517356361.727, 7, 6),
-    # (1517356063.393, 3, 4),
-    # (1517348193.989, 1, 6),
-    # (1517348193.989, 6, 8),
-    # (1517266234.424, 5, 4),
-    # (1517266234.424, 6, 5),
-    # (1517269966.858, 2, 4),
-    # (1517269966.858, 2, 8),
-    # (1517269966.858, 7, 8),
-    # (1516820219.855, 3, 4),
-    # (1516744107.347, 3, 6),
-    # (1513976168.029, 2, 1),
-    # (1511913615.871, 5, 4),
-    # (1510268339.831, 4, 5),
-    # (1510268339.831, 4, 7),
-    # (1510268339.831, 5, 4),
-    # (1510268339.831, 7, 4),
-    # (1508189280.042, 4, 8),
-    # (1507235159.776, 5, 6),
-    # (1505421643.243, 6, 7),
-    # (1505421643.243, 7, 6),
-    # (1505515553.146, 3, 8),
-    # (1505515553.146, 6, 5),
-    # (1505515553.146, 6, 7),
-    # (1505515553.146, 7, 3),
-    # (1500668871.652, 1, 7),
-    # (1496703451.204, 4, 1),
-    # (1495574744.012, 4, 2),
-    # (1493159586.902, 3, 5),
-    # (1493159586.902, 7, 8),
-    # (1492018873.073, 8, 4),
-    # (1491587831.024, 8, 3),
-    # (1491252584.113, 1, 5),
-    # (1491347329.805, 3, 6),
-    # (1491347329.805, 6, 2),
-    # (1490043541.218, 2, 7),
-    # (1490043541.218, 6, 2),
-    # (1490043541.218, 7, 2),
-    # (1490043541.218, 7, 6),
-    # (1484952266.115, 8, 4),
-    # (1539801888.714, 1, 8),
-    # (1539801888.714, 7, 1),
-    # # tlx 3 to sst
-    # (1486504558.948, 3, 5),
-    # (1486511976.478, 7, 2),
-    # (1490218204.397, 8, 5),
-    # (1490304528.810, 8, 7),
-    # (1490304528.810, 5, 7),
-    # (1490819652.306, 6, 5),
-    # (1492030010.631, 6, 2),
-    # (1492204582.392, 2, 7),
-    # (1492036074.933, 7, 5),
-    # (1492212394.505, 5, 4),
-    # (1492212394.505, 3, 4),
-    # (1496356414.741, 3, 6),
-    # (1496356414.741, 3, 4),
-    # (1497653267.742, 3, 4),
-    # (1498258681.855, 3, 1),
-    # (1499898590.696, 2, 8),
-    # (1499898590.696, 1, 8),
-    # (1508362350.796, 6, 3),
-    # (1513809172.285, 3, 1),
-    # (1526677592.224, 5, 4),
-    # (1502914763.893, 2, 8),
-    # (1504300627.314, 4, 8),
-    # (1504300627.314, 2, 8),
-    # (1498255210.715, 1, 5),
-    # (1522789170.885, 8, 5),
-    # (1535145422.740, 4, 6),
-    # (1535150219.310, 5, 3)]
+    (1530559621.966, 7, 6),
+    (1527020350.517, 6, 7),
+    (1525903868.115, 6, 5),
+    (1525903868.115, 7, 6),
+    (1525812130.134, 7, 6),
+    (1523398687.484, 2, 1),
+    (1523398687.484, 2, 3),
+    (1523398687.484, 3, 2),
+    (1521667891.153, 3, 4),
+    (1519425770.224, 6, 7),
+    (1519425770.224, 7, 2),
+    (1518564082.242, 4, 6),
+    (1517356361.727, 7, 6),
+    (1517356063.393, 3, 4),
+    (1517348193.989, 1, 6),
+    (1517348193.989, 6, 8),
+    (1517266234.424, 5, 4),
+    (1517266234.424, 6, 5),
+    (1517269966.858, 2, 4),
+    (1517269966.858, 2, 8),
+    (1517269966.858, 7, 8),
+    (1516820219.855, 3, 4),
+    (1516744107.347, 3, 6),
+    (1513976168.029, 2, 1),
+    (1511913615.871, 5, 4),
+    (1510268339.831, 4, 5),
+    (1510268339.831, 4, 7),
+    (1510268339.831, 5, 4),
+    (1510268339.831, 7, 4),
+    (1508189280.042, 4, 8),
+    (1507235159.776, 5, 6),
+    (1505421643.243, 6, 7),
+    (1505421643.243, 7, 6),
+    (1505515553.146, 3, 8),
+    (1505515553.146, 6, 5),
+    (1505515553.146, 6, 7),
+    (1505515553.146, 7, 3),
+    (1500668871.652, 1, 7),
+    (1496703451.204, 4, 1),
+    (1495574744.012, 4, 2),
+    (1493159586.902, 3, 5),
+    (1493159586.902, 7, 8),
+    (1492018873.073, 8, 4),
+    (1491587831.024, 8, 3),
+    (1491252584.113, 1, 5),
+    (1491347329.805, 3, 6),
+    (1491347329.805, 6, 2),
+    (1490043541.218, 2, 7),
+    (1490043541.218, 6, 2),
+    (1490043541.218, 7, 2),
+    (1490043541.218, 7, 6),
+    (1484952266.115, 8, 4),
+    (1539801888.714, 1, 8),
+    (1539801888.714, 7, 1),
+    # tlx 3 to sst
+    (1486504558.948, 3, 5),
+    (1486511976.478, 7, 2),
+    (1490218204.397, 8, 5),
+    (1490304528.810, 8, 7),
+    (1490304528.810, 5, 7),
+    (1490819652.306, 6, 5),
+    (1492030010.631, 6, 2),
+    (1492204582.392, 2, 7),
+    (1492036074.933, 7, 5),
+    (1492212394.505, 5, 4),
+    (1492212394.505, 3, 4),
+    (1496356414.741, 3, 6),
+    (1496356414.741, 3, 4),
+    (1497653267.742, 3, 4),
+    (1498258681.855, 3, 1),
+    (1499898590.696, 2, 8),
+    (1499898590.696, 1, 8),
+    (1508362350.796, 6, 3),
+    (1513809172.285, 3, 1),
+    (1526677592.224, 5, 4),
+    (1502914763.893, 2, 8),
+    (1504300627.314, 4, 8),
+    (1504300627.314, 2, 8),
+    (1498255210.715, 1, 5),
+    (1522789170.885, 8, 5),
+    (1535145422.740, 4, 6),
+    (1535150219.310, 5, 3)]
 
 
 import pandas as pd
@@ -372,11 +383,12 @@ d={'uid':[],
    'pre_cre':[],
    'post_cre':[],
    'spike_times_relative_to_experiment':[],
-   'pulse_number_in_train':[],
-   'deconvolved_amplitudes':[],
+   'pulse_num_within_train':[],
+   'deconvolved_amps':[],
    'pulse_database_ids':[],
    'qc_mask':[],
-   'stim_freq': []}
+   'stim_freq': [],
+   'post_syn_rec_id': []}
 
 for uid, pre, post in connections:
     expt_stuff= query_specific_experiment(uid, pre_cell_ext_id=pre, post_cell_ext_id=post)
@@ -391,25 +403,25 @@ for uid, pre, post in connections:
     d['pre_cre'].append(expt_stuff[0][4])
     d['post_cre'].append(expt_stuff[0][5])
     d['spike_times_relative_to_experiment'].append( deconvolved['spike_times_relative_to_experiment'] )
-    d['deconvolved_amplitudes'].append(deconvolved['deconvolved_amplitudes'])
+    d['deconvolved_amps'].append(deconvolved['deconvolved_amps'])
     d['pulse_database_ids'].append(deconvolved['pulse_database_ids'])
     d['qc_mask'].append(deconvolved['qc_mask'])
-    d['pulse_number_in_train'].append(deconvolved['pulse_number_in_train'])
+    d['pulse_num_within_train'].append(deconvolved['pulse_num_within_train'])
     d['stim_freq'].append(deconvolved['stim_freq'])
-
-
-# data=pd.DataFrame.from_dict(d)
-# data.to_csv('pv_tlx_to_sst.csv')
+    d['post_syn_rec_id'].append(deconvolved['post_syn_rec_id'])
+data=pd.DataFrame.from_dict(d)
+data.to_csv('pv_tlx_to_sst.csv')
 
     
-#    plt.figure(figsize=(15,10))
-#    sample=range(0,len(amplitudes))
-#    plt.plot(spike_times_relative_to_experiment[sample], amplitudes[sample]*1e3, '.-', ms=20)
-#    # for ii, (p,t,a) in enumerate(zip(pulse_ids[sample], spike_times_relative_to_experiment[sample], amplitudes[sample]*1e3)):
-#    #     plt.annotate(str(ii), xy=(t,a), textcoords='data')
-#    plt.ylabel('Deconvolution Arbitrary Units')
-#    plt.xlabel('time (unknown units)')
-#    plt.title('Deconvolution Amplitude\n%.3f, pre %i, post %i' %(uid, pre, post))
+    # plt.figure(figsize=(15,10))
+    # sample=range(0,len(deconvolved['deconvolved_amps']))
+    # plt.plot(deconvolved['spike_times_relative_to_experiment'][sample], deconvolved['deconvolved_amps'][sample]*1e3, '.-', ms=20)
+    # # for ii, (p,t,a) in enumerate(zip(pulse_ids[sample], spike_times_relative_to_experiment[sample], amplitudes[sample]*1e3)):
+    # #     plt.annotate(str(ii), xy=(t,a), textcoords='data')
+    # plt.ylabel('Deconvolution Arbitrary Units')
+    # plt.xlabel('time (unknown units)')
+    # plt.title('Deconvolution Amplitude\n%.3f, pre %i, post %i' %(uid, pre, post))
+    # plt.show()
 
     
     #extract pulse wave forms if you want to plot them
