@@ -271,7 +271,6 @@ def fit_trace(waveform, excitation, clamp_mode='ic', weight=None, latency=None, 
 
     return fit
 
-
 def fit_average_first_pulses(pair):
     # get response latency from average of all pulse responses
     message = None #initialize error message 
@@ -290,9 +289,11 @@ def fit_average_first_pulses(pair):
 
         # create weighting for fit
         fake=copy.deepcopy(avg_psp_i) #making a copy of the trace that I can set nans in without changing original trace
-        fake.time_slice(min(pulse_starts), max(pulse_ends)).data[:] = np.nan #set region where pulse is to nan so the weighting can easily be assigned 
+        fake.time_slice(min(pulse_starts), max(pulse_ends)).data[:] = np.nan #set region where pulse is to nan so the weighting can easily be assigned
+
         weight_i = np.ones(len(avg_psp_i.data)) * 10.  #set everything to ten initially
         weight_i[int((time_before_spike+.0001+xoffset) / avg_psp_i.dt):int((time_before_spike+.0001+xoffset+4e-3) / avg_psp_i.dt)] = 30.  #area around steep PSP rise 
+        weight_i[np.where(fake.time_values < min(pulse_starts))] = 20. #set baseline region to a higher weight
         weight_i[np.isnan(fake.data)] = 0.   #area around stim artifact note that since this is spike aligned there will be some blur in where the cross talk is
 
         # fit trace
