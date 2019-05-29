@@ -127,12 +127,14 @@ small_amp_df = small_amp_df.sort_values(by=['min_abs_amp'])
 print 'looking at', len(small_amp_df), 'abs amplitudes smaller than', value * 1.e3, 'mV'
 
 i=0
-plt.figure(figsize=(16,11))
-ax1=plt.subplot(411)
-ax2=plt.subplot(4,1,4)
-ax3 = plt.subplot2grid((4, 1), (1, 0), rowspan=2)
+
 for index, row in small_amp_df.iterrows():
     i+=1
+
+    plt.figure(figsize=(16,11))
+    ax1=plt.subplot(411)
+    ax2=plt.subplot(4,1,4)
+    ax3 = plt.subplot2grid((4, 1), (1, 0), rowspan=2)
 
     index_to_time = 1.e3/db.default_sample_rate
     cross_talk_region = np.where(row.w3==0)
@@ -182,4 +184,5 @@ for index, row in small_amp_df.iterrows():
 
     plt.tight_layout()
     plt.show()
+    s.close()
     plt.close()
