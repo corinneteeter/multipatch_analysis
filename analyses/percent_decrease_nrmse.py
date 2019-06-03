@@ -81,7 +81,7 @@ for index, row in fit_df.iterrows():
     nrmse_list =[]
     # use same weighting paradigm for all fitting using paradigm  
     weight = np.ones(len(row.w3))
-#    weight[np.where(row.w3==0)] = 0
+    weight[np.where(row.w3==0)] = 0
     
     for data, fit in (['data1', 'fit1'], ['data2', 'fit2'], ['data3', 'fit3'], ['data4', 'fit4']) : # fit 1 though 4
         wrmse, wstd, wnrmse = weighted_nrmse(row[data], row[fit], weight)
@@ -130,11 +130,14 @@ i=0
 
 for index, row in small_amp_df.iterrows():
     i+=1
+    if i < 15:
+        continue  #just to start in a specific spot
 
     plt.figure(figsize=(16,11))
-    ax1=plt.subplot(411)
-    ax2=plt.subplot(4,1,4)
-    ax3 = plt.subplot2grid((4, 1), (1, 0), rowspan=2)
+    ax1 = plt.subplot2grid((4, 2), (0, 0))              #presynaptic spikes
+    ax2 = plt.subplot(4,1,4)                            #pulse responses
+    ax3 = plt.subplot2grid((4, 1), (1, 0), rowspan=2)   #fits
+    ax4 = plt.subplot2grid((4, 2), (0, 1))              #weighting
 
     index_to_time = 1.e3/db.default_sample_rate
     cross_talk_region = np.where(row.w3==0)
@@ -143,28 +146,38 @@ for index, row in small_amp_df.iterrows():
     out=s.query(db.Pair, db.AvgFirstPulseFit).filter(db.Pair.id == row['pair_id']).filter(db.AvgFirstPulseFit.pair_id == row['pair_id']).all()
     if len(out) > 1:
         raise Exception('there should not be more than one pair returned')
-
+    if len(out) < 1:
+        print('skipping pair_id', row['pair_id'])
+        continue
     pair= out[0][0]
     pulse_ids=out[0][1].ic_pulse_ids
 
-
-
+    # plots concerning individual traces
     plot_individual_responses(pulse_ids, pair, (ax1,ax2))
-    ax1.annotate('pre-synaptic spikes', xy=(.75, .9), xycoords = 'axes fraction', fontsize=12)
+
+    ax1.annotate('pre-synaptic spikes', xy=(.75, .9), xycoords = 'axes fraction', fontsize=14)
     ax1.axvspan(cross_talk_region[0][0]*index_to_time, cross_talk_region[0][-1]*index_to_time, facecolor = 'k', alpha=.2)
-    ax2.annotate('individual responses', xy=(.75, .9), xycoords = 'axes fraction', fontsize=12)
+    ax1.axvspan(10. + pair.connection_strength.ic_fit_xoffset*1.e3 - 0.5, 10. + pair.connection_strength.ic_fit_xoffset*1.e3 + 0.5, facecolor = 'g', alpha=.2) 
+    ax1.set_xlim([5, 15])
+
+    ax2.annotate('individual responses', xy=(.75, .9), xycoords = 'axes fraction', fontsize=14)
     ax2.axvspan(cross_talk_region[0][0]*index_to_time, cross_talk_region[0][-1]*index_to_time, facecolor = 'k', alpha=.2)
+    ax2.axvspan(10. + pair.connection_strength.ic_fit_xoffset*1.e3 - 0.5, 10. + pair.connection_strength.ic_fit_xoffset*1.e3 + 0.5, facecolor = 'g', alpha=.2) 
 
-
+    # fitting plot
     time=np.arange(len(row['data1']))*index_to_time #ms
     ax3.plot(time, row['data1']*1.e3, lw=2, label='average response')
-    ax3.plot(time, row['fit1']*1.e3, label=('fit 1, amp %.2f, nrmse %.03f' % ((row['amp1']*1.e3), row['nrmse1'])))
-    ax3.plot(time, row['fit2']*1.e3, label=('fit 2, amp %.2f, nrmse %.03f' % ((row['amp2']*1.e3), row['nrmse2'])))
-    ax3.plot(time, row['fit3']*1.e3, label=('fit 3, amp %.2f, nrmse %.03f' % ((row['amp3']*1.e3), row['nrmse3'])))
-    ax3.plot(time, row['fit4']*1.e3, label=('fit 4, amp %.2f, nrmse %.03f' % ((row['amp4']*1.e3), row['nrmse4'])))
+    ax3.plot(time, row['fit1']*1.e3, label=('fit 1, amp %.2f, nrmse %.04f' % ((row['amp1']*1.e3), row['nrmse1'])))
+    ax3.plot(time, row['fit2']*1.e3, label=('fit 2, amp %.2f, nrmse %.04f' % ((row['amp2']*1.e3), row['nrmse2'])))
+    ax3.plot(time, row['fit3']*1.e3, label=('fit 3, amp %.2f, nrmse %.04f' % ((row['amp3']*1.e3), row['nrmse3'])))
+    ax3.plot(time, row['fit4']*1.e3, label=('fit 4, amp %.2f, nrmse %.04f' % ((row['amp4']*1.e3), row['nrmse4'])))
 
-    #pdb.set_trace()
+    ylow, yhigh= ax3.get_ylim()
+    small_increment= (yhigh-ylow)/20. #doing this for plot annotation 
     ax3.axvspan(cross_talk_region[0][0]*index_to_time, cross_talk_region[0][-1]*index_to_time, facecolor = 'k', alpha=.2)
+    ax3.axvspan(10. + pair.connection_strength.ic_fit_xoffset*1.e3 - 0.5, 10. + pair.connection_strength.ic_fit_xoffset*1.e3 + 0.5, facecolor = 'g', alpha=.2) 
+    ax3.annotate('crosstalk', xy=(cross_talk_region[0][0]*index_to_time + .1, ylow + 2*small_increment), xycoords = 'data', fontsize=10)
+    ax3.annotate('latency', xy=(10+pair.connection_strength.ic_fit_xoffset*1.e3, ylow + small_increment), xycoords = 'data', fontsize=10, color='g', horizontalalignment='center')
 
     ax3.set_ylabel('voltage (mV)')
     ax3.set_xlabel('time (ms)')
@@ -179,10 +192,19 @@ for index, row in small_amp_df.iterrows():
                 pair.post_cell.ext_id,
                 pair.pre_cell.cre_type,
                 pair.post_cell.cre_type)),
-                xy=(.1, .8), xycoords = 'axes fraction', va='center', fontsize=12)
+                xy=(.1, .8), xycoords = 'axes fraction', va='center', fontsize=14)
+
+
+    ax4.plot(time, row['w1'], color = sns.color_palette()[1])
+    ax4.plot(time, row['w2'], color = sns.color_palette()[2])
+    ax4.plot(time, row['w3'], color = sns.color_palette()[3])
+    ax4.plot(time, row['w4'], color = sns.color_palette()[4])
+    ax4.axvspan(cross_talk_region[0][0]*index_to_time, cross_talk_region[0][-1]*index_to_time, facecolor = 'k', alpha=.2)
+    ax4.axvspan(10. + pair.connection_strength.ic_fit_xoffset*1.e3 - 0.5, 10. + pair.connection_strength.ic_fit_xoffset*1.e3 + 0.5, facecolor = 'g', alpha=.2)
+    ax4.annotate('weights', xy=(.75, .1), xycoords = 'axes fraction', fontsize=14)
 
 
     plt.tight_layout()
-    plt.show()
+
     s.close()
-    plt.close()
+    plt.show()
