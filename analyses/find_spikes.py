@@ -11,6 +11,7 @@ from neuroanalysis.data import Trace, TraceList
 import pdb
 #import ipfx.feature_extractor as fe
 import ipfx.spike_detector as sd
+from scipy.optimize import curve_fit
 
 #import pyqtgraph as pg #this is here to be able to use pyqt debugger 
 #pg.dbg() #will open console if exception happens and you are running in interactive mode
@@ -18,7 +19,7 @@ import ipfx.spike_detector as sd
 
 # cells with currently poorly identified spikes 
 cell_ids = [#[1544582617.589, 1, 8, 5654136, 5654045],  #this is a good text bc two fail but the others are sort of sad looking.
-#         [1544582617.589, 1, 6, 5654136, 5654045], 
+         [1544582617.589, 1, 6, 5654136, 5654045], 
 #         [1497417667.378, 5, 2, 7483977, 7483912],
 #         [1491942526.646, 8, 1, 6693052, 6693000],
 #         [1521004040.059, 5, 6],
@@ -40,7 +41,7 @@ for cell_id in cell_ids:
     pre_syn_times = []
     pre_syn_voltages = []
     for pr in pulse_responses:
-        if pr.stim_pulse_id in ic_pulse_ids: #cell_id[3:]: # 
+        if pr.stim_pulse_id in cell_id[3:]: #ic_pulse_ids:  
             
             print(synapse, synapse_type, ', pass ex qc', pr.ex_qc_pass)
             print(synapse, synapse_type, ', pass in qc', pr.in_qc_pass)
@@ -63,12 +64,14 @@ for cell_id in cell_ids:
 
             #----------spike detection----------------------------
             # look for max of dvvdt in region during pulse and eliminating region where current injection artifact 
-            pulse_window =np.where((pre_syn_times[-1][2:] > (pulse_start_time + .0003)) & (pre_syn_times[-1][2:] < (pulse_end_time - .0002)))
+            pulse_window =np.where((pre_syn_times[-1][2:] > (pulse_start_time + .0003)) & (pre_syn_times[-1][2:] < (pulse_end_time - .0002)))[0]
             max_dvvdt = np.max(dvvdt[pulse_window]) #this 
                 
             max_index = np.where(dvvdt==max_dvvdt)
             if len(max_index) > 1:
                 raise Exception('should only be one max')
+            else: 
+                max_index=max_index[0][0]
 
             if max_dvvdt > .5e-3:
                spike_found = True
@@ -76,9 +79,29 @@ for cell_id in cell_ids:
                 spike_found = False
 
             # now look in window where pulse is terminated to see if it spikes (hard to differentiate)
-            pulse_end_window = np.where((pre_syn_times[-1][2:] > (pulse_end_time - .0002)) & (pre_syn_times[-1][2:] < (pulse_end_time + .0005)))
+            pulse_end_window = np.where((pre_syn_times[-1][2:] > (pulse_end_time - .0002)) & (pre_syn_times[-1][2:] < (pulse_end_time + .0005)))[0]
+            #find location of minimum dv/dt
+            min_dvdt = np.min(dvdt[pulse_end_window]) #this 
+            min_index = np.where(dvdt==min_dvdt)
+            if len(min_index) > 1:
+                raise Exception('should only be one min')
+            else: 
+                min_index=min_index[0][0]
 
+            def derivative(t, tau, Vo): 
+                """function describing the deriviative of the voltage.  If there
+                is no spike one would expect this to fall off as the RC of the cell. """
+                return -(Vo/tau)*np.exp(-t/tau)
 
+            ttofit=pre_syn_times[-1][(min_index+1):] #not the plus one because time trace of derivative needs to be one shorter
+            popt, pcov = curve_fit(derivative, ttofit, dvdt[min_index:])
+
+            #TODO: add test to see if the fit adequately defines the function.  I should probably just define and r-squared
+
+            plt.figure()
+            plt.plot(ttofit, dvdt[min_index:], 'r')
+            plt.plot(ttofit, derivative(ttofit, *popt), 'k--')
+            plt.show()
             #------------------------------------------------------
 
             # plotting
