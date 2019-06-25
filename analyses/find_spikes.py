@@ -1,4 +1,5 @@
-"""prototying using feature extractor for difficult to identify pre synaptic spikes
+"""prototying better spike detector.  This code plots single pulses and
+the derivatives to show detection.
 """
 import multipatch_analysis.database as db
 import multipatch_analysis.connection_strength as cs
@@ -18,16 +19,16 @@ from scipy.optimize import curve_fit
 
 
 # cells with currently poorly identified spikes 
-cell_ids = [#[1544582617.589, 1, 8, 5654136, 5654045],  #this is a good text bc two fail but the others are sort of sad looking.
-         #[1544582617.589, 1, 6, 5654136, 5654045], 
-         #[1497417667.378, 5, 2, 7483977, 7483912],
-         #[#1491942526.646, 8, 1, 6693052, 6693000],  #this presynaptic cell is sick.  Spiking is ambiguious, very interesting examples
-#         [1521004040.059, 5, 6],
-         #[31534293227.896, 7, 8, 7271530], #this one stuff spikes at end
+cell_ids = [[1544582617.589, 1, 8, 5656957, 5654136, 5654045],  #this is a good text bc two fail but the others are sort of sad looking.
+        #[1544582617.589, 1, 6, 5654136, 5654045], 
+#        [1497417667.378, 5, 2, 7483977, 7483912],
+        [1491942526.646, 8, 1, 6693052, 6693000],  #this presynaptic cell is sick.  Spiking is ambiguious, very interesting examples
+        #[1521004040.059, 5, 6],
+#        [1534293227.896, 7, 8, 7271530], #this one stuff spikes at end
 #         [1540356446.981, 8, 6],
 #         [1550101654.271, 1, 6], # these spike toward the end and are found correctly
-         [1516233523.013, 6, 7],  #very interesting example: a voltage deflection happens very early but cant be seen in dvvdt due to to onset being to early.  Think about if there is a way to fix this.  Maybe and initial pulse window.  
-         [1534297702.068, 7, 2]
+        [1516233523.013, 6, 7],  #very interesting example: a voltage deflection happens very early but cant be seen in dvvdt due to to onset being to early.  Think about if there is a way to fix this.  Maybe and initial pulse window.  
+        [1534297702.068, 7, 2]
             ]
 
 
@@ -41,22 +42,22 @@ for cell_id in cell_ids:
     pre_syn_times = []
     pre_syn_voltages = []
     for pr in pulse_responses:
-        if pr.stim_pulse_id in ic_pulse_ids: # cell_id[3:]: # 
+        if pr.stim_pulse_id in cell_id[3:]: # ic_pulse_ids:# 
             
             print(synapse, synapse_type, ', pass ex qc', pr.ex_qc_pass)
             print(synapse, synapse_type, ', pass in qc', pr.in_qc_pass)
             #Align individual responses
             start_time = pr.start_time  
-            spike_time = pr.stim_pulse.spikes[0].max_dvdt_time      
+            legacy_spike_time = pr.stim_pulse.spikes[0].max_dvdt_time      
             time_before_spike = 10.e-3  
-            t0 = start_time-spike_time+time_before_spike
-            pulse_start_time = pr.stim_pulse.onset_time - spike_time+time_before_spike
-            pulse_end_time = pr.stim_pulse.onset_time + pr.stim_pulse.duration -spike_time+time_before_spike
+            t0 = start_time-legacy_spike_time+time_before_spike
+            pulse_start_time = pr.stim_pulse.onset_time - legacy_spike_time+time_before_spike
+            pulse_end_time = pr.stim_pulse.onset_time + pr.stim_pulse.duration -legacy_spike_time+time_before_spike
 
             post_voltage = Trace(data=pr.data, t0= t0, sample_rate=db.default_sample_rate).time_slice(start=0, stop=None) 
             pre_voltage = Trace(data=pr.stim_pulse.data, t0 = t0, sample_rate=db.default_sample_rate).time_slice(start=0, stop=None)
 
-#            pre_inj_current = Trace(data=pr.stim_pulse.data, t0= start_time-spike_time+time_before_spike, sample_rate=db.default_sample_rate).time_slice(start=0, stop=None)
+#            pre_inj_current = Trace(data=pr.stim_pulse.data, t0= start_time-legacy_spike_time+time_before_spike, sample_rate=db.default_sample_rate).time_slice(start=0, stop=None)
             pre_syn_times.append(pre_voltage.time_values)
             pre_syn_voltages.append(pre_voltage.data)
             time = pre_syn_times[-1]
@@ -104,7 +105,8 @@ for cell_id in cell_ids:
 
             ttofit=time[(min_index+1):] #note the plus one because time trace of derivative needs to be one shorter
             dvtofit=dvdt[min_index:]
-            popt, pcov = curve_fit(derivative, ttofit, dvtofit)
+            popt, pcov = curve_fit(derivative, ttofit, dvtofit, maxfev=10000)
+
             fit = derivative(ttofit, *popt)
             #TODO need to catch a runtime error here "RuntimeError: Optimal parameters not found: Number of calls to function has reached maxfev = 600.""
 
@@ -129,12 +131,13 @@ for cell_id in cell_ids:
             #------------------------------------------------------
 
             # plotting
-            plt.figure(figsize =  (20, 10))
+            plt.figure(figsize =  (8, 5))
             
             ax1 = plt.subplot(1,1, 1)
             ln1=ax1.plot(time*1.e3, pre_syn_voltages[-1]*1.e3, 'b', lw=2, label="data")
             ax1.tick_params(axis='y', colors='b')
-            ax1.set_ylabel('voltage (mV)', color='b')
+            ax1.set_ylabel('voltage (mV)', color='b') 
+            ax1.axvline(10, linestyle= '-', color = 'k',lw=.5, alpha=.5) #light line denoting previous alignment
             ax1.axvspan(dvvdt_time[pulse_end_window[0]]*1.e3, dvvdt_time[pulse_end_window[-1]]*1.e3, facecolor = 'k', alpha=.2)
             ax1.axvspan(dvvdt_time[pulse_window[0]]*1.e3, dvvdt_time[pulse_window[-1]]*1.e3, facecolor = 'm', alpha=.1)
 
@@ -151,10 +154,16 @@ for cell_id in cell_ids:
             lns = ln1+ln2+ln3
             labs = [l.get_label() for l in lns]
             ax1.legend(lns, labs)
+            ax1.get_xlim()
+            ax1.set_xlim((5., ax1.get_xlim()[1]))
+
 
             if spike_index:
                 ax1.axvline(time[spike_index]*1.e3, linestyle= '--', color = 'k')
             plt.title("%.3f, %i, %i, %i" % (cell_id[0], cell_id[1], cell_id[2], pr.stim_pulse_id))
+
+            relative_spike_time = time[spike_index]
+            new_DB_spike_time = start_time + relative_spike_time - t0
             plt.show()
             
         #spikes = sd.detect_putative_spikes(pre_syn_voltages[-1], time, start=None, end=None, filter=None, dv_cutoff=20.)           
