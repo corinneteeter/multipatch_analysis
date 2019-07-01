@@ -19,7 +19,7 @@ from scipy.optimize import curve_fit
 
 
 # cells with currently poorly identified spikes 
-cell_ids = [[1544582617.589, 1, 8, 5656957, 5654136, 5654045],  #this is a good text bc two fail but the others are sort of sad looking.
+cell_ids = [#[1544582617.589, 1, 8, 5656957, 5654136, 5654045],  #this is a good text bc two fail but the others are sort of sad looking.
         #[1544582617.589, 1, 6, 5654136, 5654045], 
 #        [1497417667.378, 5, 2, 7483977, 7483912],
         [1491942526.646, 8, 1, 6693052, 6693000],  #this presynaptic cell is sick.  Spiking is ambiguious, very interesting examples
@@ -36,23 +36,30 @@ s = db.Session()
 for cell_id in cell_ids:
     pair = db.experiment_from_timestamp(cell_id[0]).pairs[cell_id[1], cell_id[2]]
     synapse = pair.synapse
+#    pdb.set_trace()
     synapse_type = pair.connection_strength.synapse_type
     ic_pulse_ids = pair.avg_first_pulse_fit.ic_pulse_ids
     pulse_responses = pair.pulse_responses
     pre_syn_times = []
     pre_syn_voltages = []
     for pr in pulse_responses:
-        if pr.stim_pulse_id in cell_id[3:]: # ic_pulse_ids:# 
-            
+        if pr.stim_pulse.recording.patch_clamp_recording.clamp_mode == 'ic':
+            print("%.3f, %i, %i, %i" % (cell_id[0], cell_id[1], cell_id[2], pr.stim_pulse_id))            
             print(synapse, synapse_type, ', pass ex qc', pr.ex_qc_pass)
             print(synapse, synapse_type, ', pass in qc', pr.in_qc_pass)
             #Align individual responses
+            
             start_time = pr.start_time  
-            legacy_spike_time = pr.stim_pulse.spikes[0].max_dvdt_time      
-            time_before_spike = 10.e-3  
-            t0 = start_time-legacy_spike_time+time_before_spike
-            pulse_start_time = pr.stim_pulse.onset_time - legacy_spike_time+time_before_spike
-            pulse_end_time = pr.stim_pulse.onset_time + pr.stim_pulse.duration -legacy_spike_time+time_before_spike
+            # legacy_spike_time = pr.stim_pulse.spikes[0].max_dvdt_time      
+            # time_before_spike = 10.e-3  
+            # t0 = start_time-legacy_spike_time+time_before_spike
+            # pulse_start_time = pr.stim_pulse.onset_time - legacy_spike_time+time_before_spike
+            # pulse_end_time = pr.stim_pulse.onset_time + pr.stim_pulse.duration -legacy_spike_time+time_before_spike
+
+            time_before_pulse = 10.e-3
+            t0 = start_time - pr.stim_pulse.onset_time + time_before_pulse
+            pulse_start_time = 10.e-3
+            pulse_end_time = pulse_start_time + pr.stim_pulse.duration
 
             post_voltage = Trace(data=pr.data, t0= t0, sample_rate=db.default_sample_rate).time_slice(start=0, stop=None) 
             pre_voltage = Trace(data=pr.stim_pulse.data, t0 = t0, sample_rate=db.default_sample_rate).time_slice(start=0, stop=None)
@@ -108,7 +115,6 @@ for cell_id in cell_ids:
             popt, pcov = curve_fit(derivative, ttofit, dvtofit, maxfev=10000)
 
             fit = derivative(ttofit, *popt)
-            #TODO need to catch a runtime error here "RuntimeError: Optimal parameters not found: Number of calls to function has reached maxfev = 600.""
 
             mse = (np.sum((dvtofit-fit)**2))/len(fit)*1e10 #mean squared error
             if (mse > 500.) &  (spike_index == None):
@@ -137,7 +143,6 @@ for cell_id in cell_ids:
             ln1=ax1.plot(time*1.e3, pre_syn_voltages[-1]*1.e3, 'b', lw=2, label="data")
             ax1.tick_params(axis='y', colors='b')
             ax1.set_ylabel('voltage (mV)', color='b') 
-            ax1.axvline(10, linestyle= '-', color = 'k',lw=.5, alpha=.5) #light line denoting previous alignment
             ax1.axvspan(dvvdt_time[pulse_end_window[0]]*1.e3, dvvdt_time[pulse_end_window[-1]]*1.e3, facecolor = 'k', alpha=.2)
             ax1.axvspan(dvvdt_time[pulse_window[0]]*1.e3, dvvdt_time[pulse_window[-1]]*1.e3, facecolor = 'm', alpha=.1)
 
@@ -156,6 +161,10 @@ for cell_id in cell_ids:
             ax1.legend(lns, labs)
             ax1.get_xlim()
             ax1.set_xlim((5., ax1.get_xlim()[1]))
+
+            if pr.stim_pulse.spikes[0].max_dvdt_time:  #if there is a value here the old algorithm said this spiked
+                legacy_spike_time = pr.stim_pulse.spikes[0].max_dvdt_time - pr.stim_pulse.onset_time + time_before_pulse
+                ax1.axvline(legacy_spike_time*1.e3, linestyle= '-', color = 'k',lw=.5, alpha=.5) #light line denoting previous alignment
 
 
             if spike_index:
