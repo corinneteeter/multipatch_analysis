@@ -202,6 +202,15 @@ def get_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False, get_only
     bg_events = raw_bg_events[bg_qc_mask]
     mean_bg_amp = bg_events[amplitude_field].mean()
 
+    # Assign each train a number for ease of analysis (not totally sure how accurate this is given possible id reassignment).
+    rec_ids = included_events['post_rec_id'])
+    train_ids = [1] 
+    for ii in range(1, len(rec_ids)): 
+        if rec_ids[ii] == rec_ids[ii-1]:
+            train_ids.append train_ids[-1]
+        else:
+            train_ids.append(train_ids[-1]+1) 
+
     # get spike times and amplitudes
     # I believe the following must be putting the events in reference to the start of the experiment. 
     # the 1e-9 is present because the time stamp is turned into nanoseconds
