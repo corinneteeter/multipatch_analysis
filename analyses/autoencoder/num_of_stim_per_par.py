@@ -4,21 +4,7 @@
 from multipatch_analysis.database import default_db as db
 import numpy as np
 import pandas as pd
-
-def set_recovery(delay):
-    """If a *delay* is within 5 ms of an expected recovery value, set it to that.  
-    Else do not alter it."""
-    if not delay:
-        return None
-    expected_delays = np.array([.125, .250, .500, 1.000, 2.000, 4.000])
-    value = expected_delays[np.isclose(delay, expected_delays, atol=.005)] #allow a 5 ms variation in recovery
-    if len(value) == 0:
-        return delay 
-    elif len(value) == 1:
-        return value[0]
-    else: 
-        raise Exception("a number can't be within 5 ms of two specified delays")
-
+from lib import set_recovery
 
 def load_pair_pulse_responses(pair):
     print("Loading:", pair)
