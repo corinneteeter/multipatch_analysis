@@ -4,7 +4,7 @@
 from multipatch_analysis.database import default_db as db
 import numpy as np
 import pandas as pd
-from lib import set_recovery
+from lib import set_recovery, possible_stimuli
 
 def load_pair_pulse_responses(pair):
     print("Loading:", pair)
@@ -47,47 +47,6 @@ def max_value_dict(dict1, dict2):
 
 def put_stim_in_table(df, pair, pair_dict):
 
-    possible_stimuli =[
-        'ic, 10.0, 0.25', 
-        'ic, 20.0, 0.25', 
-        'ic, 25.0, 0.25', 
-        'ic, 50.0, 0.053', 
-        'ic, 50.0, 0.103', 
-        'ic, 50.0, 0.125', 
-        'ic, 50.0, 0.203', 
-        'ic, 50.0, 0.25', 
-        'ic, 50.0, 0.403', 
-        'ic, 50.0, 0.5', 
-        'ic, 50.0, 0.803', 
-        'ic, 50.0, 1.0', 
-        'ic, 50.0, 1.603', 
-        'ic, 50.0, 2.0', 
-        'ic, 50.0, 3.203', 
-        'ic, 50.0, 4.0', 
-        'ic, 100.0, 0.25', 
-        'ic, 150.0, 0.25', 
-        'ic, 200.0, 0.25', 
-        'ic, None, None', 
-        'vc, 10.0, 0.25', 
-        'vc, 20.0, 0.25', 
-        'vc, 25.0, 0.25', 
-        'vc, 50.0, 0.053', 
-        'vc, 50.0, 0.103', 
-        'vc, 50.0, 0.125', 
-        'vc, 50.0, 0.203', 
-        'vc, 50.0, 0.25', 
-        'vc, 50.0, 0.403', 
-        'vc, 50.0, 0.5', 
-        'vc, 50.0, 0.803', 
-        'vc, 50.0, 1.0', 
-        'vc, 50.0, 1.603', 
-        'vc, 50.0, 2.0', 
-        'vc, 50.0, 3.203', 
-        'vc, 50.0, 4.0', 
-        'vc, 100.0, 0.25', 
-        'vc, 150.0, 0.25', 
-        'vc, 200.0, 0.25', 
-        'vc, None, None']
     if df.empty:
         df=pd.DataFrame(columns=['expt', 'pre_cell', 'post_cell', 'pre_cre', 
                                 'post_cre', 'pre_layer', 'post_layer'] + 
