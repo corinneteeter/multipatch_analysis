@@ -2,8 +2,9 @@ import pyqtgraph as pg
 from neuroanalysis.ui.plot_grid import PlotGrid
 from neuroanalysis.data import TSeries
 from neuroanalysis.fitting import StackedPsp
-from multipatch_analysis.database import default_db as db
-from multipatch_analysis.ui.experiment_browser import ExperimentBrowser
+from aisynphys.database import default_db as db
+from aisynphys.ui.experiment_browser import ExperimentBrowser
+from aisynphys.dynamics import pulse_response_query, sorted_pulse_responses
 
 
 class DynamicsWindow(pg.QtGui.QSplitter):
@@ -33,28 +34,8 @@ class DynamicsWindow(pg.QtGui.QSplitter):
     def load_pair(self, pair):
         print("Loading:", pair)
         
-        q = db.query(db.PulseResponse, db.PulseResponseFit, db.StimPulse, db.PatchClampRecording, db.MultiPatchProbe, db.Synapse, db.PulseResponse.data)
-        q = q.join(db.PulseResponseFit, db.PulseResponse.pulse_response_fit)
-        q = q.join(db.StimPulse, db.PulseResponse.stim_pulse)
-        q = q.join(db.Recording, db.PulseResponse.recording)
-        q = q.join(db.PatchClampRecording, db.PatchClampRecording.recording_id==db.Recording.id)
-        q = q.join(db.MultiPatchProbe, db.MultiPatchProbe.patch_clamp_recording_id==db.PatchClampRecording.id)
-        q = q.join(db.Synapse, db.Synapse.pair_id==db.PulseResponse.pair_id)
-        q = q.filter(db.PulseResponse.pair_id==pair.id)
-
-        self.pair = pair
-        self.pr_recs = q.all()
-
-        # group records by (clamp mode, ind_freq, rec_delay), and then by pulse number
-        sorted_recs = {}
-        for rec in self.pr_recs:
-            stim_key = (rec.patch_clamp_recording.clamp_mode, rec.multi_patch_probe.induction_frequency, rec.multi_patch_probe.recovery_delay)
-            sorted_recs.setdefault(stim_key, {})
-            pn = rec.stim_pulse.pulse_number
-            sorted_recs[stim_key].setdefault(pn, [])
-            sorted_recs[stim_key][pn].append(rec)
-            
-        self.sorted_recs = sorted_recs
+        q = pulse_response_query(pair, data=True)
+        self.sorted_recs = sorted_pulse_responses(q.all())
         
         self.plot_all()
         
@@ -69,9 +50,11 @@ class DynamicsWindow(pg.QtGui.QSplitter):
             plt = self.plots[i,0]
             plt.setTitle("%s  %0.0f Hz  %0.2f s" % stim_key)
             
-            pulses = sorted(list(prs.keys()))
-            for pulse_n in pulses:
-                for rec in prs[pulse_n]:
+            
+            for recording in prs:
+                pulses = sorted(list(prs[recording].keys()))
+                for pulse_n in pulses:
+                    rec = prs[recording][pulse_n]
                     # spike-align pulse + offset for pulse number
                     spike_t = rec.stim_pulse.first_spike_time
                     if spike_t is None:
@@ -117,7 +100,7 @@ if __name__ == '__main__':
     import sys
         
     app = pg.mkQApp()
-    # pg.dbg()
+    pg.dbg()
     
     win = DynamicsWindow()
     win.show()
@@ -133,3 +116,4 @@ if __name__ == '__main__':
 
     if sys.flags.interactive == 0:
         app.exec_()
+        
