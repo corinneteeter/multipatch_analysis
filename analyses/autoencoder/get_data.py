@@ -1,16 +1,20 @@
-from multipatch_analysis.database import default_db as db
+from aisynphys.database import default_db as db
 import numpy as np
 from lib import set_recovery, possible_stimuli
 import pandas as pd
 import random
 import logging
 import os
+import sys
 
-LOG_FILENAME = '09_05_2019.log'
+#this is here to deal with VSC stupid path stuff
+os.chdir(sys.path[0])
+
+LOG_FILENAME = '09_30_2019.log'
 logging.basicConfig(filename=LOG_FILENAME,level=logging.DEBUG)
 
 fit_params = ['amp', 'latency', 'rise_time', 'decay_tau']
-pair_description = ['expt','pre_cell', 'post_cell','pre_cre','post_cre','pre_layer', 'post_layer']
+pair_description = ['species','expt','pre_cell', 'post_cell','pre_cre','post_cre','pre_layer', 'post_layer']
 
 def assign_wo_replacement(values, num):
     repeat = int(np.ceil(num/len(values)))
@@ -72,7 +76,7 @@ q = db.pair_query(synapse=True)
 all_pairs = q.all()
 print(len(all_pairs), 'pairs')
 
-save_folder = 'data09_05_2019/'
+save_folder = 'data09_30_2019'
 
 for ii, pair in enumerate(all_pairs):
     print(ii, 'out of', len(all_pairs) )
@@ -82,19 +86,27 @@ for ii, pair in enumerate(all_pairs):
         print('skipping', pair, 'already processed')
         continue
 
+    # pair dictionary where keys are stimulus
     pr_dict = load_pair_pulse_responses(pair)
 
 #----------------------------------------------------------------
 # --Turn the dictionary into format needed for an auto encoder---
 #----------------------------------------------------------------
 
-    rows_per_pair = 15 # maximum number of rows per neuron
+
+    # maximum number of stimuli in the data set
+    max_num_stim = 0
+    for stim_key in pr_dict:
+        max_num_stim = max(max_num_stim, len(pr_dict[stim_key]['amp'][1]))
+    Need to figure out whether to maximize data in same row or column
+    could keep things together.        
 
     # check how many combinations will be possible
     possible_combinations = 1 #initializing value
     for stim_key in pr_dict:
         possible_combinations *= len(pr_dict[stim_key]['amp'][1]) # of all possible comination of stimuli
 
+    rows_per_pair = 15 # maximum number of rows per neuron
     if possible_combinations < rows_per_pair:
         print('warning', pair, 'only has', possible_combinations, 'possible combinations of stimuli and thus will be under represented')
         logging.debug('warning '+str(pair)+ ' only has '+ str(possible_combinations)+ ' possible combinations of stimuli and thus will be under represented')      
@@ -104,15 +116,18 @@ for ii, pair in enumerate(all_pairs):
     for pd_key in pair_description:
         giant_matrix.setdefault(pd_key, [])
 
-    for (pd_key, des) in zip(pair_description, [pair.experiment.acq_timestamp,
+    # create and fill descriptive columns such as cre_line
+    for (pd_key, db_pd) in zip(pair_description, [pair.experiment.slice.species,
+                                                pair.experiment.acq_timestamp,
                                                 pair.pre_cell.ext_id,
                                                 pair.post_cell.ext_id,
                                                 pair.pre_cell.cre_type,
                                                 pair.post_cell.cre_type,
                                                 pair.pre_cell.target_layer,
                                                 pair.post_cell.target_layer]):
+        # set up keys
         for jj in range(rows_per_pair):
-            giant_matrix[pd_key] = giant_matrix[pd_key] + [des]
+            giant_matrix[pd_key] = giant_matrix[pd_key] + [db_pd]
 
     bail_out_flag = None
     for stim_key in possible_stimuli:
