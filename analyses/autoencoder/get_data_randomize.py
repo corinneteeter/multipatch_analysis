@@ -1,3 +1,15 @@
+"""
+Creates a file to run though an autoencoder
+The columns 'expt','pre_cell', 'post_cell' identify the pair.
+The columns 'pre_cre','post_cre','pre_layer', 'post_layer' are descriptive features of the pair.
+
+The other columns are data and were created independently within a pair.  Each pair has up to 15 stimuli 
+combinations.  For each column, I used random sampling without replacement within a pair.  When the data ran 
+out for a certain stimulus, I rerandomized and sampled again without replacement.  This was done to use as 
+much of the data as possible and have randomized combinations.
+
+"""
+
 from aisynphys.database import default_db as db
 import numpy as np
 from lib import set_recovery, possible_stimuli
@@ -125,16 +137,20 @@ for ii, pair in enumerate(all_pairs):
                                                 pair.post_cell.cre_type,
                                                 pair.pre_cell.target_layer,
                                                 pair.post_cell.target_layer]):
-        # set up keys
+        # make a list of values that is as long as the number of rows desired for a pair. 
+        # This fill later fill out a pandas dataframe.  
         for jj in range(rows_per_pair):
             giant_matrix[pd_key] = giant_matrix[pd_key] + [db_pd]
 
     bail_out_flag = None
+    
+    # next three lines set up column keys
     for stim_key in possible_stimuli:
         for param_key in fit_params:
             for pulse_num in range(1,13): 
                 giant_matrix.setdefault((stim_key, param_key, pulse_num), [])
 
+                # randomize the values to make up the desired number of rows for this [stim_key][param_key][pulse_num]
                 if stim_key in pr_dict.keys():
                     try: 
                         values = pr_dict[stim_key][param_key][pulse_num] #assigning values to a variable for ease
@@ -144,6 +160,8 @@ for ii, pair in enumerate(all_pairs):
                         print('something went wrong with', pair)
                         logging.debug('something went wrong with', pair)
                         bail_out_flag = 1
+                
+                # append a none if the pair does not have this possible stimulus.
                 else:
                     for jj in range(rows_per_pair):
                         giant_matrix[(stim_key, param_key, pulse_num)] = giant_matrix[(stim_key, param_key, pulse_num)] + [None]

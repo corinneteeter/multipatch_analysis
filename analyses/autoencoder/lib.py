@@ -1,4 +1,6 @@
 import numpy as np
+from aisynphys.database import default_db as db
+
 
 # These are the possbile stimuli found in the db14 on 8/29/2019
 # in the format [clamp type, stimulus frequecy, recover time].
