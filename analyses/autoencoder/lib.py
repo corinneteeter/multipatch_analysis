@@ -1,6 +1,4 @@
 import numpy as np
-from aisynphys.database import default_db as db
-
 
 # These are the possbile stimuli found in the db14 on 8/29/2019
 # in the format [clamp type, stimulus frequecy, recover time].
@@ -63,3 +61,25 @@ def set_recovery(delay):
     else: 
         raise Exception("a number can't be within 5 ms of two specified delays")
 
+# specify excitatory and inhibitory cre-lines
+def specify_excitation(cre):
+    excitation_specification= {'unknown': 'U',
+                           'pvalb,sim1': 'U',
+                           'pvalb': 'I',
+                           'sst': 'I', 
+                           'vip': 'I',
+                           'pvalb,sst': 'I',    
+                           'sim1': 'E',
+                           'tlx3': 'E',              
+                           'nr5a1': 'E',  
+                           'rorb': 'E',
+                           'ntsr1': 'E',
+                           'rbp4': 'E',
+                           'slc17a8': 'E',
+                           'cux2': 'E',
+                           'fam84b': 'E'}
+
+    if cre not in excitation_specification.keys():
+        raise Exception('provided cre line not recognized')
+    else:
+        return excitation_specification[cre]

@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 
-dir='data09_05_2019'
+dir='data10_22_2019'
 master_df=pd.DataFrame()
 files = os.listdir(dir)
 for ii, file in enumerate(files):
@@ -13,4 +13,4 @@ for ii, file in enumerate(files):
     
 master_df.astype({'expt': str})
 print('total size', master_df.shape)
-master_df.to_csv('autoencoder_data_09_06_2019.csv', sep='#', index=False)
+master_df.to_csv('autoencoder_data_10_21_2019.csv', sep='#', index=False)

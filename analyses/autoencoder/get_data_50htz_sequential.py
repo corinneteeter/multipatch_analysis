@@ -8,7 +8,7 @@ The predecessor to this code is get_data_randomize.py where the parameters were 
 
 from aisynphys.database import default_db as db
 import numpy as np
-from lib import set_recovery
+from lib import set_recovery, specify_excitation
 import pandas as pd
 import random
 import logging
@@ -60,10 +60,12 @@ def load_pair_pulse_responses(pair):
 #this is here to deal with VSC stupid path stuff
 os.chdir(sys.path[0])
 
-LOG_FILENAME = '10_21_2019.log'
+date='10_22_2019'
+
+LOG_FILENAME = date + '.log'
 logging.basicConfig(filename=LOG_FILENAME,level=logging.DEBUG)
 
-pair_description = ['species','expt','pre_cell', 'post_cell','pre_cre','post_cre','pre_layer', 'post_layer']
+pair_description = ['species','expt','pre_cell', 'post_cell','pre_cre','post_cre','pre_layer', 'post_layer', 'pre_ex', 'post_ex', 'stp_induction_50hz']
 fit_params = ['amp', 'latency', 'rise_time', 'decay_tau']
 
 # One example: <pair 1492018873.073 8 5>
@@ -76,7 +78,7 @@ q = db.pair_query(synapse=True)
 all_pairs = q.all()
 print(len(all_pairs), 'pairs')
 
-save_folder = 'data10_21_2019'
+save_folder = 'data' + date
 if not os.path.exists(save_folder):
     os.makedirs(save_folder)
 
@@ -108,14 +110,21 @@ for ii, pair in enumerate(all_pairs):
                           # the output matrix for the pair is not saved to a csv
     
     first_time_through = True
+    has_at_least_one_value = False
     for stim_key in pr_dict.keys():
         if stim_key != 'ic, 50.0':
             # the stimulus key is not one we are interested in, skip it
             continue
 
         else:
+            has_at_least_one_value = True  # at least one relevant stimulus was found
             if first_time_through:
                 num_of_rows = len(pr_dict[stim_key][fit_params[0]][1])
+
+                # specify whether the cre lines are excitatory or inhibitory
+                pre_ex = specify_excitation(pair.pre_cell.cre_type)
+                post_ex = specify_excitation(pair.post_cell.cre_type)
+
                 #create the number of description rows needed
                 for (pd_key, db_pd) in zip(pair_description, [pair.experiment.slice.species,
                                             pair.experiment.acq_timestamp,
@@ -124,7 +133,10 @@ for ii, pair in enumerate(all_pairs):
                                             pair.pre_cell.cre_type,
                                             pair.post_cell.cre_type,
                                             pair.pre_cell.target_layer,
-                                            pair.post_cell.target_layer]):
+                                            pair.post_cell.target_layer,
+                                            pre_ex,
+                                            post_ex, 
+                                            pair.dynamics.stp_induction_50hz]):
                     for jj in range(num_of_rows):
                         giant_matrix[pd_key] = giant_matrix[pd_key] + [db_pd]
                 first_time_through = False  
@@ -135,7 +147,8 @@ for ii, pair in enumerate(all_pairs):
                     giant_matrix.setdefault((stim_key, param_key, pulse_num), [])
                     if len(pr_dict[stim_key][param_key][pulse_num]) != num_of_rows:
                         print(pair, 'has inconsistent vector lengths; should be', num_of_rows, 'but ', stim_key, param_key, pulse_num, 'report', len(pr_dict[stim_key][param_key][pulse_num]))
-                        logging.debug(pair, 'has inconsistent vector lengths; should be', num_of_rows, 'but ', stim_key, param_key, pulse_num, 'report', len(pr_dict[stim_key][param_key][pulse_num]))
+                        logging.error(str(pair)+' has inconsistent vector lengths; should be ' +str(num_of_rows), 
+                                        'but '+ stim_key+' '+param_key+' '+ pulse_num+ 'report'+ str(len(pr_dict[stim_key][param_key][pulse_num])))
                         bail_out_flag = 1                                            
                     try: 
                         values = pr_dict[stim_key][param_key][pulse_num] #assigning values to a variable for ease
@@ -143,7 +156,7 @@ for ii, pair in enumerate(all_pairs):
                         giant_matrix[(stim_key, param_key, pulse_num)] = giant_matrix[(stim_key, param_key, pulse_num)] + values
                     except:
                         print('something went wrong with', pair)
-                        logging.debug('something went wrong with', pair)
+                        logging.debug('something went wrong with'+ str(pair)+': couldnt load values')
                         bail_out_flag = 1
 
                 # append a none if the pair does not have this possible stimulus.
@@ -152,10 +165,15 @@ for ii, pair in enumerate(all_pairs):
                 #        giant_matrix[(stim_key, param_key, pulse_num)] = giant_matrix[(stim_key, param_key, pulse_num)] + [None]
 
     # if nothing went wrong save the data out in the matrix form
-    if bail_out_flag is None:
-        df=pd.DataFrame().from_dict(giant_matrix)
-        print('matrix size', df.shape)
-        if df.shape[0] == 0:
-            print('not printing pair', pair, 'no data')
+    if bail_out_flag is None: 
+        if has_at_least_one_value is True:
+            df=pd.DataFrame().from_dict(giant_matrix)
+            print('matrix size', df.shape)
+            if df.shape[0] == 0:
+                logging.info('not saving pair'+ str(pair)+ ': empty df')
+            elif df.drop(pair_description, axis =1).isnull().all().all():
+                logging.info('not saving pair'+ str(pair)+ ': empty all data is None')
+            else:
+                df.to_csv(os.path.join(save_folder, save_file_name), sep = '#')
         else:
-            df.to_csv(os.path.join(save_folder, save_file_name), sep = '#')
+            logging.info('not saving pair ' +str(pair)+ ': no 50hz stimuli')
