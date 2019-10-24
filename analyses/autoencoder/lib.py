@@ -64,6 +64,7 @@ def set_recovery(delay):
 # specify excitatory and inhibitory cre-lines
 def specify_excitation(cre):
     excitation_specification= {'unknown': 'U',
+                           'sim1,pvalb': 'U',    
                            'pvalb,sim1': 'U',
                            'pvalb': 'I',
                            'sst': 'I', 
