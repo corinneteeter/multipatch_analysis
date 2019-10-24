@@ -73,6 +73,12 @@ fit_params = ['amp', 'latency', 'rise_time', 'decay_tau']
 # pair = expt.pairs['8','4']
 # pr_dict = load_pair_pulse_responses(pair)
 
+
+# Useful for debugging specific pair issues
+#expt = db.experiment_from_timestamp(1554236360.106)    
+#pair = expt.pairs['1','3']
+#all_pairs = [pair]
+
 # Figuring out what will be in the data set
 q = db.pair_query(synapse=True)
 all_pairs = q.all()
@@ -85,6 +91,10 @@ if not os.path.exists(save_folder):
 
 
 for ii, pair in enumerate(all_pairs):
+    # the following pair does not have an entry in the dynamics table
+    if pair.experiment.acq_timestamp == 1552517188.758:
+        continue
+
     print(ii, 'out of', len(all_pairs) )
     save_file_name = str(pair.experiment.acq_timestamp)+'_'+str(pair.pre_cell.ext_id)+'_'+str(pair.post_cell.ext_id)+'.csv'
 
@@ -152,7 +162,6 @@ for ii, pair in enumerate(all_pairs):
                         bail_out_flag = 1                                            
                     try: 
                         values = pr_dict[stim_key][param_key][pulse_num] #assigning values to a variable for ease
-                        #vec = assign_wo_replacement(values, rows_per_pair)
                         giant_matrix[(stim_key, param_key, pulse_num)] = giant_matrix[(stim_key, param_key, pulse_num)] + values
                     except:
                         print('something went wrong with', pair)
