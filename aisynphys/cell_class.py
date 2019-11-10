@@ -11,28 +11,30 @@ class CellClass(object):
     """Represents a class of cells as a list of selection criteria.
     
     Construct with an arbitrary set of keyword arguments, where each argument specifies
-    a criteria for matching cells. Keyword argument names must be a column from the Cell
-    or Morphology database tables.
+    a criteria for matching cells. Keyword argument names must be a column from the 
+    :class:`Cell <aisynphys.database.schema.Cell>` or :class:`Morphology <aisynphys.database.schema.Morphology>`
+    database tables.
     
-    Examples
-    --------
+    Example::
     
         pv_class = CellClass(cre_type='pvalb')
         inhibitory_class = CellClass(cre_type=('pvalb', 'sst', 'vip'))
         l23_pyr_class = CellClass(pyramidal=True, target_layer='2/3')
         l5_spiny_class = CellClass(dendrite_type='spiny', cortical_layer='5')
     """
-    def __init__(self, display_names=None, **criteria):
+    def __init__(self, name=None, **criteria):
         self.criteria = criteria
-        self.display_names = display_names
+        self._name = name
 
     @property
     def name(self):
         """A short string representation of this cell class.
         
-        This is the same as as_tuple, concatenated with spaces.
+        If no name was supplied, then this value is `as_tuple` concatenated with spaces.
         """
-        return ' '.join(self.as_tuple)
+        if self._name is not None:
+            return self._name
+        return ' '.join([str(x) for x in self.as_tuple])
 
     @property
     def as_tuple(self):
@@ -41,9 +43,6 @@ class CellClass(object):
         Order of elements in the tuple is (target_layer, pyramidal, cre_type), but
         elements are only present if they were specified as criteria for the cell class.
         """
-        if self.display_names is not None:
-            return self.display_names
-            
         name = []
 
         target_layer = self.criteria.get('target_layer')
@@ -52,7 +51,7 @@ class CellClass(object):
         if target_layer is not None:
             name.append('L' + target_layer)
         elif cortical_layer is not None:
-            name.append('L' + cortical_layer)
+            name.append('L' + str(cortical_layer))
 
         if 'dendrite_type' in self.criteria:
             name.append('%s' % self.criteria['dendrite_type'])
@@ -163,7 +162,7 @@ class CellClass(object):
             
 
 
-def classify_cells(cell_classes, cells=None, pairs=None, session=None, db=None):
+def classify_cells(cell_classes, cells=None, pairs=None):
     """Given cell class definitions and a list of cells, return a dict indicating which cells
     are members of each class.
 
@@ -174,10 +173,7 @@ def classify_cells(cell_classes, cells=None, pairs=None, session=None, db=None):
     cells : list | None
         List of Cell instances to be classified.
     pairs : list | None
-        List of pairs from which cells will be collected. May not be used with *cells* or *session*
-    session: Session | None
-        If *cells* is not provided, then a database session may be given instead from which
-        cells will be selected.
+        List of pairs from which cells will be collected. May not be used with *cells*
         
     Returns
     -------
@@ -200,14 +196,9 @@ def classify_cells(cell_classes, cells=None, pairs=None, session=None, db=None):
         sst_cells = grouped_cells[sst_cell_class]    
 
     """
-    if db is None:
-        db = default_db
     if pairs is not None:
         assert cells is None, "cells and pairs arguments are mutually exclusive"
-        assert session is None, "session and pairs arguments are mutually exclusive"
         cells = set([p.pre_cell for p in pairs] + [p.post_cell for p in pairs])
-    if cells is None:
-        cells = session.query(db.Cell, db.Cell.cre_type, db.Cell.target_layer, db.Morphology.pyramidal, db.Morphology.cortical_layer, db.Morphology.dendrite_type).join(db.Morphology)
     cell_groups = OrderedDict([(cell_class, set()) for cell_class in cell_classes])
     for cell in cells:
         for cell_class in cell_classes:

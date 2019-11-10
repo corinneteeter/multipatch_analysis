@@ -1,7 +1,7 @@
 import os
 from collections import OrderedDict
 from sqlalchemy.orm import relationship, deferred, sessionmaker, aliased
-from ... import config
+from ... import config, constants, synphys_cache
 from . import make_table
 from .slice import Slice
 
@@ -21,12 +21,12 @@ class ExperimentBase(object):
 
     @property
     def nwb_file(self):
-        return os.path.join(config.synphys_data, self.storage_path, self.ephys_file)
-
-    @property
-    def nwb_cache_file(self):
-        from ...synphys_cache import SynPhysCache
-        return SynPhysCache().get_cache(self.nwb_file)
+        if config.synphys_data is not None:
+            # Return path from local file repo
+            return os.path.join(config.synphys_data, self.storage_path, self.ephys_file)
+        else:
+            # return file cached from download
+            return synphys_cache.get_nwb_path(self.ext_id)
 
     @property
     def data(self):
@@ -37,7 +37,7 @@ class ExperimentBase(object):
 
         if not hasattr(self, '_data'):
             from ...data import MultiPatchDataset
-            self._data = MultiPatchDataset(self.nwb_cache_file)
+            self._data = MultiPatchDataset(self.nwb_file)
         return self._data
 
     def __repr__(self):
@@ -99,9 +99,79 @@ Experiment.electrodes = relationship(Electrode, order_by=Electrode.id, back_popu
 Electrode.experiment = relationship(Experiment, back_populates="electrodes")
 
 
+class CellBase(object):
+    def _init_on_load(self):
+        self._cell_class = -1
+        self._cell_class_nonsynaptic = -1
+
+    @property
+    def cell_class(self):
+        """Cell class "ex" or "in" determined by synaptic current, cre type, or morphology.
+
+        This property makes use of synaptic currents to define cell class; it should _not_
+        be used when measuring connection probability.
+        """
+        if self._cell_class != -1:
+            return self._cell_class
+        
+        cls = self.cell_class_nonsynaptic
+        if cls is not None:
+            self._cell_class = cls
+            return cls
+        
+        syn_type = None
+        for pair in self.experiment.pair_list:
+            if pair.pre_cell is not self:
+                continue
+            if pair.has_synapse:
+                typ = pair.synapse.synapse_type
+                if typ is not None:
+                    if syn_type is None:
+                        syn_type = typ
+                    elif syn_type != typ:
+                        # cell has mixed in/ex outputs (!!)
+                        return None
+        
+        self._cell_class = syn_type
+        return syn_type        
+        
+    @property
+    def cell_class_nonsynaptic(self):
+        """Cell class "ex" or "in" determined by cre type or morphology.
+        
+        Unlike `cell_class`, this property excludes synaptic currents as a determinant
+        so that it can be used in measurements of connectivity.
+        """
+        if self._cell_class_nonsynaptic != -1:
+            return self._cell_class_nonsynaptic
+
+        cre = self.cre_type
+        if self.morphology is None:
+            pyr = None
+            dendrite = None
+        else:
+            pyr = self.morphology.pyramidal
+            dendrite = self.morphology.dendrite_type
+        if cre in constants.EXCITATORY_CRE_TYPES or pyr is True or dendrite == 'spiny':
+            self._cell_class_nonsynaptic = 'ex'
+        elif cre in constants.INHIBITORY_CRE_TYPES or pyr is False or dendrite == 'aspiny':
+            self._cell_class_nonsynaptic = 'in'
+        else:
+            self._cell_class_nonsynaptic = None
+        
+        return self._cell_class_nonsynaptic
+        
+    def __repr__(self):
+        uid = getattr(self.experiment, 'ext_id', None)
+        if uid is None or uid == '':
+            uid = str('%0.3f'%self.experiment.acq_timestamp if self.experiment.acq_timestamp is not None else None)
+        return "<%s %s %s>" % (self.__class__.__name__, uid, self.ext_id)
+
+
 Cell = make_table(
     name='cell', 
     comment="Each row represents a single cell in an experiment.",
+    base=CellBase,
     columns=[
         ('experiment_id', 'experiment.id', '', {'index': True}),
         ('ext_id', 'str', 'Cell ID (usually 1-8) referenced in external metadata records', {'index': True}),

@@ -3,7 +3,7 @@ import numpy as np
 from datetime import datetime
 from collections import OrderedDict
 from acq4.util.DataManager import getDirHandle
-from ... import config, synphys_cache, lims, qc
+from ... import config, lims, qc
 from ...util import timestamp_to_datetime
 from ...data import Experiment
 from ..pipeline_module import DatabasePipelineModule
@@ -30,7 +30,7 @@ class DatasetPipelineModule(DatabasePipelineModule):
         job_id = job['job_id']
 
         # Load experiment from DB
-        expt_entry = db.experiment_from_timestamp(job_id, session=session)
+        expt_entry = db.experiment_from_ext_id(job_id, session=session)
         elecs_by_ad_channel = {elec.device_id:elec for elec in expt_entry.electrodes}
         pairs_by_device_id = {}
         for pair in expt_entry.pairs.values():
