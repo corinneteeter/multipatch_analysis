@@ -63,7 +63,7 @@ def load_pair_pulse_responses(pair):
 #------------------------------------------------------------------------------
 
 date = '11_10_2019' # this is for file saving purposes
-stim_to_get = 'ic, 50.0' # this is the string that will be serched for in the key of the dictionary returned by *load_pair_pulse_responses*
+stim_to_get = 'vc, 200.0' # this is the string that will be serched for in the key of the dictionary returned by *load_pair_pulse_responses*
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -75,7 +75,7 @@ os.chdir(sys.path[0])
 clamp = re.search("(.*),", stim_to_get).group(1) #note *stim_to_get* is defined in a very standarized manner
 hz = re.search(", (.*)\.", stim_to_get).group(1) #note *stim_to_get* is defined in a very standarized manner
 
-save_folder = 'data' + '_' + clamp + ' ' + hz + 'hz_'+ date
+save_folder = 'data' + '_' + clamp + '_' + hz + 'hz_'+ date
 if not os.path.exists(save_folder):
     os.makedirs(save_folder)
 
@@ -108,7 +108,7 @@ for ii, pair in enumerate(all_pairs):
     if pair.experiment.acq_timestamp == 1552517188.758:
         continue
 
-    print(ii, 'out of', len(all_pairs) )
+    print(stim_to_get, ii, 'out of', len(all_pairs) )
     save_file_name = str(pair.experiment.acq_timestamp)+'_'+str(pair.pre_cell.ext_id)+'_'+str(pair.post_cell.ext_id)+'.csv'
 
     #skip a pair if it is already in the output directory so that pairs are not reprocessed on restart
