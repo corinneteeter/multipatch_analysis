@@ -84,3 +84,24 @@ def specify_excitation(cre):
         raise Exception('provided cre line not recognized')
     else:
         return excitation_specification[cre]
+
+def specify_class(species, cre, layer):
+    """This is hear to deal with the 'unknown' cre lines."""
+    if species == 'human':
+        return 'human'
+    if cre == 'unknown':
+        if species != 'mouse':
+            raise Exception ('what species is this from?')
+        if layer == '2/3':
+            return '2/3'
+        elif layer == '4':
+            return '4'
+        elif layer =='5':
+            return '5'
+        elif layer == '6':
+            return '6'
+        else:
+            return "?"
+    else:
+        return cre
+        

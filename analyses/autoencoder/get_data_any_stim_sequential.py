@@ -8,7 +8,7 @@ The predecessor to this code is get_data_randomize.py where the parameters were 
 
 from aisynphys.database import default_db as db
 import numpy as np
-from lib import set_recovery, specify_excitation
+from lib import set_recovery, specify_excitation, specify_class
 import pandas as pd
 import random
 import logging
@@ -38,19 +38,18 @@ def load_pair_pulse_responses(pair):
 
     # group records by (clamp mode, ind_freq, rec_delay), and then by pulse number
     sorted_recs = {}
-    import pdb; pdb.set_trace()
     for rec in pr_recs:
-        stim_key = rec.patch_clamp_recording.clamp_mode+', '+str(rec.multi_patch_probe.induction_frequency)
+        stim_key = rec.PatchClampRecording.clamp_mode+', '+str(rec.MultiPatchProbe.induction_frequency)
 #        stim_key = (rec.patch_clamp_recording.clamp_mode, rec.multi_patch_probe.induction_frequency, rec.multi_patch_probe.recovery_delay)
         sorted_recs.setdefault(stim_key, {})
-        pn = rec.stim_pulse.pulse_number
+        pn = rec.StimPulse.pulse_number
         
         # note this has to match up with the *fit_param_keys* above
         for param_key, value in zip(fit_params,
-                                [rec.pulse_response_fit.fit_amp,
-                                rec.pulse_response_fit.fit_latency,
-                                rec.pulse_response_fit.fit_rise_time,
-                                rec.pulse_response_fit.fit_decay_tau]):
+                                [rec.PulseResponseFit.fit_amp,
+                                rec.PulseResponseFit.fit_latency,
+                                rec.PulseResponseFit.fit_rise_time,
+                                rec.PulseResponseFit.fit_decay_tau]):
             # create keys if not already present
             sorted_recs[stim_key].setdefault(param_key, {})
             sorted_recs[stim_key][param_key].setdefault(pn, [])
@@ -73,13 +72,14 @@ stim_to_get = 'ic, 50.0' # this is the string that will be serched for in the ke
 os.chdir(sys.path[0])
 
 # nameing stim
+clamp = re.search("(.*),", stim_to_get).group(1) #note *stim_to_get* is defined in a very standarized manner
 hz = re.search(", (.*)\.", stim_to_get).group(1) #note *stim_to_get* is defined in a very standarized manner
 
-save_folder = 'data' + '_' + hz + 'hz_'+ date
+save_folder = 'data' + '_' + clamp + ' ' + hz + 'hz_'+ date
 if not os.path.exists(save_folder):
     os.makedirs(save_folder)
 
-LOG_FILENAME = hz + 'hz_' + date + '.log'
+LOG_FILENAME = clamp + '_' + hz + 'hz_' + date + '.log'
 logging.basicConfig(filename=LOG_FILENAME,level=logging.DEBUG)
 
 pair_description = ['species','expt','pre_cell', 'post_cell','pre_cre','post_cre',
@@ -88,20 +88,20 @@ pair_description = ['species','expt','pre_cell', 'post_cell','pre_cre','post_cre
 fit_params = ['amp', 'latency', 'rise_time', 'decay_tau']
 
 # One example: <pair 1492018873.073 8 5>
-expt = db.experiment_from_timestamp(1492018873.073)
-pair = expt.pairs['8','4']
-pr_dict = load_pair_pulse_responses(pair)
+# expt = db.experiment_from_timestamp(1492018873.073)
+# pair = expt.pairs['8','4']
+# pr_dict = load_pair_pulse_responses(pair)
 
 
 # Useful for debugging specific pair issues
-#expt = db.experiment_from_timestamp(1554236360.106)    
-#pair = expt.pairs['1','3']
-#all_pairs = [pair]
+# expt = db.experiment_from_timestamp(1554236360.106)    
+# pair = expt.pairs['1','3']
+# all_pairs = [pair]
 
 # Figuring out what will be in the data set
-#q = db.pair_query(synapse=True)
-#all_pairs = q.all()
-#print(len(all_pairs), 'pairs')
+q = db.pair_query(synapse=True)
+all_pairs = q.all()
+print(len(all_pairs), 'pairs')
 
 for ii, pair in enumerate(all_pairs):
     # the following pair does not have an entry in the dynamics table
@@ -166,6 +166,8 @@ for ii, pair in enumerate(all_pairs):
                                             pair.post_cell.target_layer,
                                             pre_ex,
                                             post_ex, 
+                                            pre_class,
+                                            post_class,
                                             pair.dynamics.stp_induction_50hz]):
                     for jj in range(num_of_rows):
                         giant_matrix[pd_key] = giant_matrix[pd_key] + [db_pd]
