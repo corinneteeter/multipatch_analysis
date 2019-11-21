@@ -71,7 +71,7 @@ stim_to_get = 'vc, 200.0' # this is the string that will be serched for in the k
 #this is here to deal with VSC stupid path stuff
 os.chdir(sys.path[0])
 
-# nameing stim
+# naming stim
 clamp = re.search("(.*),", stim_to_get).group(1) #note *stim_to_get* is defined in a very standarized manner
 hz = re.search(", (.*)\.", stim_to_get).group(1) #note *stim_to_get* is defined in a very standarized manner
 
