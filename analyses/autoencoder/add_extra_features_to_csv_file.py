@@ -33,23 +33,24 @@ def fix_expt_id(ts):
 
 df['expt_fixed'] = ''
 df['expt_fixed'] = df['expt'].apply(fix_expt_id)
-df = df.assign(pair_identifier = df['expt_fixed'] + '_' + df['pre_cell'].map(str)+ '_' + df['post_cell'].map(str))
+df = df.assign(pair = df['expt_fixed'] + '_' + df['pre_cell'].map(str)+ '_' + df['post_cell'].map(str))
 df = df.drop(columns = ['expt', 'expt_fixed', 'pre_cell', 'post_cell'])
 df['stp_induction_50hz'] = np.nan
 df['pre_ex'] = ''
 df['post_ex'] = ''
 df['pre_class'] = ''
 df['post_class'] = ''
+df['species'] = ''
 
 # reorder columns for convenience.  Note that this is dependent on how many columns have been added.
 cols = df.columns.tolist()
 cols = cols[-6:] + cols[:-6]
 df = df[cols]
-pairs = df['pair_identifier'].unique()
+pairs = df['pair'].unique()
 
-for id in pairs[0:3]:
+for id in pairs:
     ts, pre, post = id.split('_')
-#    print(ts, pre, post)
+    print(ts, pre, post)
  
     try:
         #convert to float do deal with string float conversions happening as csv files
@@ -77,13 +78,13 @@ for id in pairs[0:3]:
         stp_induction_50hz = np.nan
 
 
+    df['species'][df['pair']==id] = species
+    df['pre_ex'][df['pair']==id] = pre_ex
+    df['post_ex'][df['pair']==id] = post_ex
+    df['pre_class'][df['pair']==id] = pre_class
+    df['post_class'][df['pair']==id] = post_class
+    df['stp_induction_50hz'][df['pair']==id] = stp_induction_50hz
 
-    df['pre_ex'][df['pair_identifier']==id] = pre_ex
-    df['post_ex'][df['pair_identifier']==id] = post_ex
-    df['pre_class'][df['pair_identifier']==id] = pre_class
-    df['post_class'][df['pair_identifier']==id] = post_class
-    df['stp_induction_50hz'][df['pair_identifier']==id] = stp_induction_50hz
 
 
-
-df.to_csv('data/ae_data_09_06_2019UPDATE.csv', sep = '#', index=False)
+df.to_csv('data/ae_data_09_06_2019UPDATE2.csv', sep = '#', index=False)
