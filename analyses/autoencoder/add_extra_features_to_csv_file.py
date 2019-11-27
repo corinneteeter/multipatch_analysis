@@ -5,12 +5,16 @@ import sys
 from aisynphys.database import default_db as db
 from lib import specify_excitation, specify_class
 
+"""THIS CODE IS BEING USED FOR SEVERAL DIFFERENT FILES THAT HAVE DIFFERENT MISSING ATTRIBUTES.  MAKE SURE FILE NAMES ARE CORRECT
+AND DONT FORGET TO CHECK HOW THE COLUMNS ARE BEING ADJUSTED ~L51 (SHIFTING HAS TO MATCH HOW MANY COLUMNS ARE BEING ADDED)
+"""
+
 
 #this is here to deal with VSC stupid path stuff
 os.chdir(sys.path[0])
 
-df = pd.read_csv('data/autoencoder_data_09_06_2019.csv', sep = '#', dtype={'expt': 'str'}, low_memory=False)
-# import pdb; pdb.set_trace()
+#df = pd.read_csv('data/ae_data_50hz_sequential_10_24_2019.csv', sep = '#', dtype={'expt': 'str'}, low_memory=False)
+df = pd.read_csv('data/autoencoder_data_09_06_2019.csv', sep = '#', dtype={'expt': 'str'}, low_memory=False) 
 
 #fix issue with string/float experimental ids
 def fix_expt_id(ts):
@@ -44,7 +48,7 @@ df['species'] = ''
 
 # reorder columns for convenience.  Note that this is dependent on how many columns have been added.
 cols = df.columns.tolist()
-cols = cols[-6:] + cols[:-6]
+cols = cols[-7:] + cols[:-7]  #make sure this number is dependent on how many columns are being shifted
 df = df[cols]
 pairs = df['pair'].unique()
 
@@ -87,4 +91,5 @@ for id in pairs:
 
 
 
-df.to_csv('data/ae_data_09_06_2019UPDATE2.csv', sep = '#', index=False)
+#df.to_csv('data/ae_data_50hz_sequential_10_24_2019UPDATE.csv', sep = '#', index=False)
+df.to_csv('data/ae_data_09_06_2019UPDATE.csv', sep = '#', index=False)
