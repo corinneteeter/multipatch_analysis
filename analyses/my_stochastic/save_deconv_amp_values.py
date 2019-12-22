@@ -1,10 +1,10 @@
 # Extracting and saving deconvolved amplitudes from database for easy remote use.
 
-from neuroanalysis.data import Trace, TraceList
-from multipatch_analysis.database import database as db
-import multipatch_analysis.connection_strength as cs 
-from multipatch_analysis.database.database import TableGroup
-from multipatch_analysis.pulse_response_strength import PulseResponseStrength, BaselineResponseStrength
+#from neuroanalysis.data import Trace, TraceList
+from aisynphys.database import default_db as db
+import aisynphys.connection_strength as cs 
+from aisynphys.database.database import TableGroup
+from aisynphys.pulse_response_strength import PulseResponseStrength, BaselineResponseStrength
 import matplotlib.pyplot as plt
 import numpy as np
 import time
@@ -203,11 +203,11 @@ def get_deconvolved_amp(uid, pre_cell_id, post_cell_id, get_data=False, get_only
     mean_bg_amp = bg_events[amplitude_field].mean()
 
     # Assign each train a number for ease of analysis (not totally sure how accurate this is given possible id reassignment).
-    rec_ids = included_events['post_rec_id'])
+    rec_ids = included_events['post_rec_id']
     train_ids = [1] 
     for ii in range(1, len(rec_ids)): 
         if rec_ids[ii] == rec_ids[ii-1]:
-            train_ids.append train_ids[-1]
+            train_ids.append(train_ids[-1])
         else:
             train_ids.append(train_ids[-1]+1) 
 
@@ -420,6 +420,7 @@ for uid, pre, post in connections:
     d['post_syn_rec_id'].append(deconvolved['post_syn_rec_id'])
 data=pd.DataFrame.from_dict(d)
 data.to_csv('pv_tlx_to_sst.csv')
+data.to_csv('garbage.csv')
 
     
     # plt.figure(figsize=(15,10))
