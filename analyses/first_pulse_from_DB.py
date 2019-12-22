@@ -1,5 +1,5 @@
-from multipatch_analysis.database import database as db
-from neuroanalysis.data import Trace, TraceList
+from aisynphys.database import database as db
+from neuroanalysis.data import TSeries, TSeriesList
 from neuroanalysis.fitting import fit_psp
 from neuroanalysis.baseline import float_mode
 
@@ -68,7 +68,7 @@ def init_tables():
     FirstPulseFeatures = first_pulse_features_tables['first_pulse_features']
 
 def update_analysis(limit=None):
-    s = db.Session()
+    s = db.session()
     q = s.query(db.Pair, FirstPulseFeatures).outerjoin(FirstPulseFeatures).filter(FirstPulseFeatures.pair_id == None)
     if limit is not None:
         q = q.limit(limit)
@@ -89,16 +89,17 @@ def update_analysis(limit=None):
 
 
 def first_pulse_features(pair, pulse_responses, pulse_response_amps):
-    avg_psp = TraceList(pulse_responses).mean()
+
+    avg_psp = TSeriesList(pulse_responses).mean()
     dt = avg_psp.dt
     avg_psp_baseline = float_mode(avg_psp.data[:int(10e-3/dt)])
     avg_psp_bsub = avg_psp.copy(data=avg_psp.data - avg_psp_baseline)
     lower_bound = -float('inf')
     upper_bound = float('inf')
-    xoffset = pair.connection_strength.ic_fit_xoffset
+    xoffset = pair.synapse_prediction.ic_fit_xoffset
     if xoffset is None:
         xoffset = 14*10e-3
-    synapse_type = pair.connection_strength.synapse_type
+    synapse_type = pair.synapse_prediction.synapse_type
     if synapse_type == 'ex':
         amp_sign = '+'
     elif synapse_type == 'in':
@@ -133,7 +134,7 @@ def filter_pulse_responses(pair):
     ### get first pulse response if it passes qc for excitatory or inhibitory analysis
 
     # TODO: learn how to do what's below in one query
-    # s = db.Session()
+    # s = db.session()
     # q = s.query(db.PulseResponse.data, db.StimSpike, db.PatchClampRecording)
     # q = q.join(db.StimPulse).join(db.StimSpike).join(db.PatchClampRecording)
     # filters = [
@@ -148,7 +149,7 @@ def filter_pulse_responses(pair):
     # for filter_arg in filters:
     #     q = q.filter(*filter_arg)
 
-    synapse_type = pair.connection_strength.synapse_type
+    synapse_type = pair.synapse_prediction.synapse_type
     pulse_responses = []
     pulse_response_amps = []
     pulse_ids = []
@@ -178,7 +179,7 @@ def filter_pulse_responses(pair):
         data = pr.data
         start_time = pr.start_time
         spike_time = stim_pulse.spikes[0].max_dvdt_time
-        data_trace = Trace(data=data, t0=start_time - spike_time, sample_rate=db.default_sample_rate)
+        data_trace = TSeries(data=data, t0=start_time - spike_time, sample_rate=db.default_sample_rate)
 
         if synapse_type == 'ex' and ex_qc_pass is True:
             pulse_responses.append(data_trace)

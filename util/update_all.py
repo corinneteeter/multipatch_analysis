@@ -15,7 +15,7 @@ def delay(hour=2):
     """Sleep until *hour*"""
     now = datetime.now()
     tomorrow = now + timedelta(days=1)
-    next_run = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 3, 0)
+    next_run = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 1, 0)
     delay = (next_run - now).total_seconds()
 
     print("Sleeping %d seconds until %s.." % (delay, next_run))
@@ -31,13 +31,13 @@ if __name__ == '__main__':
     if not args.now:
         delay()
 
+    date = datetime.today().strftime("%Y-%m-%d")
     stages = OrderedDict([
-        ('sync',                    ('python util/sync_rigs_to_server.py', 'sync raw data')),
-        ('import',                  ('python util/import_to_database.py', 'import to DB')),
-        ('morphology',              ('python util/update_morphology.py', 'update morphology')),
-        ('pulse_response_strength', ('python util/analyze_pulse_response_strength.py', 'pulse response strength')),
-        ('connection_strength',     ('python util/analyze_connection_strength.py', 'connection strength')),
-        ('vacuum',                  ('python util/database.py --vacuum', 'vacuum')),
+        ('backup_notes',            ('pg_dump -d data_notes -h 10.128.36.109 -U postgres  > data_notes_backups/data_notes_%s.pgsql'%date, 'backup data notes DB')),
+        ('sync',                    ('python util/sync_rigs_to_server.py', 'sync raw data to server')),
+        ('pipeline',                ('python util/analysis_pipeline.py multipatch all', 'run analysis pipeline')),
+        ('vacuum',                  ('python util/database.py --vacuum', 'vacuum database')),
+        ('bake sqlite',             ('python util/bake_sqlite.py', 'bake sqlite')),
     ])
 
     skip = [] if args.skip == '' else args.skip.split(',')
@@ -47,18 +47,24 @@ if __name__ == '__main__':
             sys.exit(-1)
 
     while True:
+        logfile = 'update_logs/' + time.strftime('%Y-%m-%d_%H-%M-%S') + '.log'
         for name, cmd in stages.items():
             cmd, msg = cmd
-            print("======================================================================================")
-            print("    " + msg)
-            print("======================================================================================")
+            msg = ("======================================================================================\n" + 
+                   "    " + msg + "\n" + 
+                   "======================================================================================\n")
+            print(msg)
+            open(logfile, 'a').write(msg)
             
             if name in skip:
-                print("   [ skipping ]")
+                msg = "   [ skipping ]\n"
+                print(msg)
+                open(logfile, 'a').write(msg)
+                
                 skip.remove(name)  # only skip once
                 continue
 
-            os.system(cmd)
+            os.system(cmd + " 2>&1 | tee -a " + logfile)
         delay()
 
 

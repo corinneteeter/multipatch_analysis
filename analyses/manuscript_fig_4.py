@@ -11,18 +11,18 @@ import numpy as np
 import pyqtgraph as pg
 import scipy.stats
 
-from neuroanalysis.data import Trace
-from multipatch_analysis.experiment_list import ExperimentList, cache_file
-from multipatch_analysis.cell_class import CellClass, classify_cells
-from multipatch_analysis.connectivity import query_pairs, measure_connectivity
-from multipatch_analysis.database import database as db
-from multipatch_analysis.ui.graphics import distance_plot
+from neuroanalysis.data import TSeries
+from aisynphys.experiment_list import ExperimentList, cache_file
+from aisynphys.cell_class import CellClass, classify_cells
+from aisynphys.connectivity import query_pairs, measure_connectivity
+from aisynphys.database import database as db
+from aisynphys.ui.graphics import distance_plot
 
 
 def write_csv(fh, data, description, units='connection probability %'):
     """Used to generate csv file accompanying figure.
     """
-    if isinstance(data, Trace):
+    if isinstance(data, TSeries):
         write_csv(fh, data, description + "distance(um)")
         write_csv(fh, data, description + " %s" % units)
     else:
@@ -134,7 +134,7 @@ human_classes = [
 ]
 
 
-session = db.Session()
+session = db.session()
 
 
 max_distance = None#100e-6

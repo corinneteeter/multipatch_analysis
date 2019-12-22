@@ -7,11 +7,11 @@ from experiment_list import ExperimentList
 from manuscript_figures import cache_response, get_amplitude, response_filter, trace_plot, bsub, write_cache, \
     induction_summary, recovery_summary, train_amp, pulse_qc, train_qc, subplots
 from synapse_comparison import load_cache
-from multipatch_analysis.ui.graphics import MatrixItem
+from aisynphys.ui.graphics import MatrixItem
 from rep_connections import connections
-from neuroanalysis.data import TraceList
-from multipatch_analysis.constants import INHIBITORY_CRE_TYPES, EXCITATORY_CRE_TYPES
-from multipatch_analysis.experiment_list import cached_experiments
+from neuroanalysis.data import TSeriesList
+from aisynphys.constants import INHIBITORY_CRE_TYPES, EXCITATORY_CRE_TYPES
+from aisynphys.experiment_list import cached_experiments
 from scipy import stats
 
 
@@ -138,7 +138,7 @@ for c1, pre_type in enumerate(cre_types):
                                                         rec_dict=grand_recovery, offset_dict=offset_rec)
 
         if len(grand_pulse_response) > 0:
-            grand_pulse_trace = TraceList(grand_pulse_response).mean()
+            grand_pulse_trace = TSeriesList(grand_pulse_response).mean()
             p2 = trace_plot(grand_pulse_trace, color=avg_color, plot=p2, x_range=[0, 27e-3], name=('n = %d' % len(grand_pulse_response)))
             if len(grand_induction) > 0:
                 for f, freq in enumerate(freqs):
@@ -157,8 +157,8 @@ for c1, pre_type in enumerate(cre_types):
                             for n in range(ind_amp.shape[0]):
                                 ind_index[freq][key].append(ind_amp[n, 7] / ind_amp[n, 0])
                             if freq == 50:
-                                grand_ind_trace = TraceList(ind_pass_qc[0]).mean()
-                                grand_rec_trace = TraceList(ind_pass_qc[1]).mean()
+                                grand_ind_trace = TSeriesList(ind_pass_qc[0]).mean()
+                                grand_rec_trace = TSeriesList(ind_pass_qc[1]).mean()
                                 for ind in ind_pass_qc[0]:
                                     p3 = trace_plot(ind, color=trace_color, plot=p3)
                                 for rec in ind_pass_qc[1]:
