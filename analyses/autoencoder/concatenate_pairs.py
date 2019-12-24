@@ -1,7 +1,8 @@
 """ Takes the individual pair files with the desired extracted data for auto encoder 
 and puts them in one file.  Specify the directory you want to grab data from. NOTE 
 THAT THIS CODE MAY BE DATA SPECIFIC AS NOTED IN CODE.  PAY ATTENTION OS DIR AND SAVE 
-STATEMENTS FOR CONSISTENT NAMING
+STATEMENTS FOR CONSISTENT NAMING.  ALSO PAY ATTENTION TO WHETHER YOU ARE SEARCHING FOR 
+IC OR VC IN THE DROPNAN STATEMENTS (~L27 AND L31)
 """
 import os
 import pandas as pd
@@ -11,7 +12,7 @@ import sys
 #this is here to deal with VSC stupid path stuff
 os.chdir(sys.path[0])
 
-data_folder_name = 'data_vc_50hz_11_10_2019'
+data_folder_name = 'data_vc_200hz_11_10_2019'
 dir='data/' + data_folder_name
 master_df=pd.DataFrame()
 files = os.listdir(dir)
@@ -27,7 +28,7 @@ for ii, file in enumerate(files):
     
     # remove rows that have a nan in the data columns
     #!!!!!!!!!!!NOTE THAT NEXT LINE IS SPEDIFIC FOR COLUMN NAME!!!!!!!!!!!!!!!!!!!!!!!!
-    df = df.dropna(subset=df.filter(regex="^\('ic", axis = 1).head().columns, how ='any', axis='rows') #drop rows that have all Nones in value columns
+    df = df.dropna(subset=df.filter(regex="^\('vc", axis = 1).head().columns, how ='any', axis='rows') #drop rows that have all Nones in value columns
 
     #--------------------------------------------------------
     #------make a new column with unique id pair id ---------
