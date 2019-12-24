@@ -62,8 +62,8 @@ def load_pair_pulse_responses(pair):
 #------------------these are the things to specify-----------------------------
 #------------------------------------------------------------------------------
 
-date = '11_10_2019' # this is for file saving purposes
-stim_to_get = 'vc, 200.0' # this is the string that will be serched for in the key of the dictionary returned by *load_pair_pulse_responses*
+date = '12_22_2019' # this is for file saving purposes
+stim_to_get = 'vc, 20.0' # this is the string that will be serched for in the key of the dictionary returned by *load_pair_pulse_responses*
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -84,7 +84,7 @@ logging.basicConfig(filename=LOG_FILENAME,level=logging.DEBUG)
 
 pair_description = ['species','expt','pre_cell', 'post_cell','pre_cre','post_cre',
                     'pre_layer', 'post_layer', 'pre_ex', 'post_ex',
-                    'pre_class', 'post_class', 'stp_induction_50hz']
+                    'pre_class', 'post_class', 'stp_induction_50hz', 'stp_initial_50hz','stp_recovery_250ms']
 fit_params = ['amp', 'latency', 'rise_time', 'decay_tau']
 
 # One example: <pair 1492018873.073 8 5>
@@ -168,7 +168,9 @@ for ii, pair in enumerate(all_pairs):
                                             post_ex, 
                                             pre_class,
                                             post_class,
-                                            pair.dynamics.stp_induction_50hz]):
+                                            pair.dynamics.stp_induction_50hz,
+                                            pair.dynamics.stp_initial_50hz,
+                                            pair.dynamics.stp_recovery_250ms]):
                     for jj in range(num_of_rows):
                         giant_matrix[pd_key] = giant_matrix[pd_key] + [db_pd]
                 first_time_through = False  
